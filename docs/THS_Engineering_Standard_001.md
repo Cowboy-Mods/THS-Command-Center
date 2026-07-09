@@ -1,8 +1,10 @@
 Document Number: THS-DOC-0001
+
 Standard: THS-STD-0001
+
 Revision: 0.1
+
 Status: Draft
-Applies To: All THS Hardware Projects
 
 TOP HAT SYNDICATE ENGINEERING MOTTO
 
