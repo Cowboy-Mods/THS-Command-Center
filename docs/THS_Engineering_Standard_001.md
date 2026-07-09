@@ -35,4 +35,4 @@ These standards exist to make every project:
 
 7. The project should remain modular whenever practical.
 
-8. Build it so the next builder starts farther ahead than we did.
+   
