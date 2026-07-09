@@ -49,8 +49,7 @@ These standards exist to make every project:
 
 8. The THS Command Center should adapt to the builder, not require the builder to adapt to it.
  
-
-9. 
+9. Every contribution should leave the project better documented than before.
 
 
     
