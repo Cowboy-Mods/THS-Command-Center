@@ -1,5 +1,8 @@
 # THS Command Center Design Book
 
+Document Number: THS-DOC-0002
+
+
 **Project:** THS Command Center (THS-CC)
 
 **Status:** In Development
