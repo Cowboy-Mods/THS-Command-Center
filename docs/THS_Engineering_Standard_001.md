@@ -39,4 +39,10 @@ These standards exist to make every project:
 
 7. The project should remain modular whenever practical.
 
-   
+8. The THS Command Center should adapt to the builder, not require the builder to adapt to it.
+ 
+
+9. 
+
+
+    
