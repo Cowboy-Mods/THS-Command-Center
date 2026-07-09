@@ -1,3 +1,8 @@
+TOP HAT SYNDICATE ENGINEERING MOTTO
+
+"Build it so the next builder starts farther ahead than we did."
+
+
 # THS Engineering Standard 001
 
 ## Purpose
