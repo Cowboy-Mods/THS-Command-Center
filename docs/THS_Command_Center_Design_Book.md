@@ -161,6 +161,18 @@ Version 2.0
 # Appendix
 
 Engineering Decisions
+Decision:
+The THS Command Center shall be designed as a modular, open-source workshop assistant.
+
+Reason:
+To allow long-term expansion without redesigning the core system.
+
+Status:
+Approved
+
+Meeting: 001
+
+
 
 Lessons Learned
 
