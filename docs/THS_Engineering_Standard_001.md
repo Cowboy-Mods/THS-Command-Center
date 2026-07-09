@@ -5,6 +5,10 @@ TOP HAT SYNDICATE ENGINEERING MOTTO
 
 # THS Engineering Standard 001
 
+
+Document Number: THS-DOC-0001
+
+
 ## Purpose
 
 This document defines the engineering standards used throughout the THS Command Center project and future THS hardware projects.
