@@ -9,7 +9,9 @@ Document Number: THS-DOC-0002
 
 **Version:** Design Book Revision 0.1
 
-THS Command Center Vision Statement (Draft)
+Vision Statement
+
+Revision: Draft 0.1
 
 The THS Command Center is an open-source, modular workshop operating platform designed to adapt to the unique needs of every maker. Whether your passion is 3D printing, electronics, woodworking, laser engraving, painting, leathercraft, RC vehicles, or something entirely different, the Command Center provides a central place to monitor, organize, automate, and enhance your creative workspace.
 ---
