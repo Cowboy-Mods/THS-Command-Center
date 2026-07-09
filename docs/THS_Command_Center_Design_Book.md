@@ -11,7 +11,7 @@ Document Number: THS-DOC-0002
 
 THS Command Center Vision Statement (Draft)
 
-The THS Command Center is an open-source, modular workshop assistant designed to help makers build, monitor, organize, and automate their workshop. It combines reliable local control, expandable hardware, and optional AI assistance into a platform that is easy to build, easy to maintain, and designed to evolve for years without redesigning the core system.
+The THS Command Center is an open-source, modular workshop operating platform designed to adapt to the unique needs of every maker. Whether your passion is 3D printing, electronics, woodworking, laser engraving, painting, leathercraft, RC vehicles, or something entirely different, the Command Center provides a central place to monitor, organize, automate, and enhance your creative workspace.
 ---
 
 # 1. Project Vision
