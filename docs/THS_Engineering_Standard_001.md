@@ -6,6 +6,9 @@ Revision: 0.1
 
 Status: Draft
 
+Applies To:
+All THS Hardware Projects
+
 TOP HAT SYNDICATE ENGINEERING MOTTO
 
 "Build it so the next builder starts farther ahead than we did."
