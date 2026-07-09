@@ -6,11 +6,15 @@
 
 **Version:** Design Book Revision 0.1
 
+THS Command Center Vision Statement (Draft)
+
+The THS Command Center is an open-source, modular workshop assistant designed to help makers build, monitor, organize, and automate their workshop. It combines reliable local control, expandable hardware, and optional AI assistance into a platform that is easy to build, easy to maintain, and designed to evolve for years without redesigning the core system.
 ---
 
 # 1. Project Vision
 
 Mission Statement
+
 
 Goals
 
