@@ -92,7 +92,9 @@ Maeve should provide the right information at the right time, without overwhelmi
 
 12. Silence is a feature.
 
-13. Maeve should earn trust through performance and reliability, not personality.
+13. Trust shall be earned through consistent performance, proven reliability, and helpful operation—not personality.
+
+14. 
 
 
 # 1. Project Vision
