@@ -275,6 +275,9 @@ Enclosure
 
 Serviceability
 
+   physical backup power/recovery control
+
+
 3D Printed Parts
 
 Assembly
