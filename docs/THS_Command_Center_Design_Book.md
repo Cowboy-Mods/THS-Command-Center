@@ -88,7 +88,11 @@ Don’t delay Version 1 trying to include Version 5 ideas.
 
 Maeve should provide the right information at the right time, without overwhelming the user.
 
-The purpose of Maeve is not to replace people. Her purpose is to help people spend more time creating, building, and enjoying what they love.
+11. The purpose of Maeve is not to replace people. Her purpose is to help people spend more time creating, building, and enjoying what they love.
+
+12. Silence is a feature.
+
+13. Maeve should earn trust through performance and reliability, not personality.
 
 
 # 1. Project Vision
