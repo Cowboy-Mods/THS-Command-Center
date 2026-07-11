@@ -150,6 +150,34 @@ Parking Lot
 
 THS Core
 
+## THS Core
+
+The THS Core is the serviceable computing and power assembly of the
+THS Command Center. It contains the primary computer, storage, cooling,
+audio electronics, internal connectivity, networking, power
+distribution, and the connection point for future expansion modules.
+
+### Version 1 Core Responsibilities
+
+- Run the dashboard and Maeve services
+- Manage networking and local integrations
+- Store configuration and project data
+- Drive the display, camera, microphone, speakers, and status lighting
+- Monitor its own health and temperature
+- Provide a controlled expansion interface
+- Remain operational without expansion modules
+
+### Core Design Requirements
+
+- Removable and replaceable computing assembly
+- Standard connectors during prototyping
+- Accessible service panel
+- Replaceable cooling fan
+- Bottom intake and upper-rear exhaust
+- Ethernet and Wi-Fi support
+- No expansion module required for startup
+- Future computing upgrades should not require redesigning the Command Console
+
 Command Console
 
 THS Expansion Bus
