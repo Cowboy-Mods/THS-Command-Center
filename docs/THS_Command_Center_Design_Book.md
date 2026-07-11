@@ -337,6 +337,17 @@ Version 2.0
 
 ---
 
+
+# 11. Design Freeze
+
+Display
+Status:
+Not Frozen
+
+Reason:
+Still researching.
+
+
 # Appendix
 
 Engineering Decisions
