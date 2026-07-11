@@ -14,7 +14,35 @@ Vision Statement
 Revision: Draft 0.1
 
 The THS Command Center is an open-source, modular workshop operating platform that helps makers monitor, organize, automate, and enhance their creative workspace. Designed to adapt to the needs of each builder, it provides a reliable foundation for workshop management while remaining easy to build, easy to maintain, and easy to expand.
+
 ---
+
+Table of Contents
+
+1. Vision
+
+2. Roadmap
+
+3. System Architecture
+   3.1 Command Console
+   3.2 THS Core
+   3.3 Module Bus
+   3.4 Expansion Modules
+
+4. Hardware Selection
+
+5. Software Architecture
+
+6. Dashboard UI
+
+7. Mechanical Design
+
+8. Future Versions
+
+9. Parking Lot
+
+
+
 
 Design Philosophy
 
