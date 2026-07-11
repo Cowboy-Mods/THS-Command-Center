@@ -51,5 +51,16 @@ These standards exist to make every project:
  
 9. Every contribution should leave the project better documented than before.
 
+Rule #10
 
+Every critical function shall have a documented recovery method.
+
+Examples:
+
+Power
+Networking
+Storage
+Voice
+Display
+Software updates
     
