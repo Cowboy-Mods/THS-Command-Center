@@ -1,5 +1,6 @@
 # THS-Command-Center
 Open-source smart workshop assistant for makers. Powered by Raspberry Pi, Home Assistant, and custom 3D-printed hardware.
+
 THS COMMAND CENTER
 
 Smart Workshop Assistant
@@ -17,3 +18,7 @@ Features
 ✔ Camera System
 ✔ Workshop Dashboard
 ✔ Open Source
+
+## Project Logs
+
+- [Maeve and THS Command Center Build Log](docs/BUILD_LOG.md)
