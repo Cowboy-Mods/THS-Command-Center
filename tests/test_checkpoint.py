@@ -3,7 +3,8 @@ import unittest
 from pathlib import Path
 
 from inventory.checkpoint import (
-    apply_checkpoint, dry_run, purchase_foundation_dry_run, sha256, verify_database,
+    apply_checkpoint, dry_run, purchase_foundation_dry_run,
+    purchase_phase2a_dry_run, sha256, verify_database,
 )
 from inventory.db import connect, migrate
 
@@ -66,7 +67,16 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
             db.close()
         finally:
             db_module.MIGRATIONS = migrations
-        result = purchase_foundation_dry_run(old)
+        through_013 = self.root / "through-013-migrations"
+        through_013.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name <= "013_purchase_registry_foundation.sql":
+                (through_013 / source.name).write_bytes(source.read_bytes())
+        db_module.MIGRATIONS = through_013
+        try:
+            result = purchase_foundation_dry_run(old)
+        finally:
+            db_module.MIGRATIONS = migrations
         self.assertEqual(result["applied"], ["013_purchase_registry_foundation.sql"])
         self.assertEqual(result["integrity"], "ok")
         self.assertEqual(result["migration_count"], 13)
@@ -75,6 +85,34 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
 
     def test_04_purchase_foundation_dry_run_is_idempotent(self):
         result = purchase_foundation_dry_run(self.database)
+        self.assertEqual(result["applied"], [])
+        self.assertEqual(result["integrity"], "ok")
+
+    def test_05_purchase_phase2a_dry_run_preserves_all_existing_content(self):
+        from inventory import db as db_module
+        migrations = db_module.MIGRATIONS
+        old = self.root / "purchase-pre014.sqlite3"
+        db_module.MIGRATIONS = self.root / "pre014-migrations"
+        db_module.MIGRATIONS.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name < "014_purchase_evidence_maintenance_links.sql":
+                (db_module.MIGRATIONS / source.name).write_bytes(source.read_bytes())
+        try:
+            db = connect(old)
+            migrate(db)
+            db.close()
+        finally:
+            db_module.MIGRATIONS = migrations
+        result = purchase_phase2a_dry_run(old)
+        self.assertEqual(
+            result["applied"], ["014_purchase_evidence_maintenance_links.sql"]
+        )
+        self.assertEqual(result["migration_count"], 14)
+        self.assertEqual(result["integrity"], "ok")
+        self.assertFalse(any(result["new_table_counts"].values()))
+
+    def test_06_purchase_phase2a_dry_run_is_idempotent(self):
+        result = purchase_phase2a_dry_run(self.database)
         self.assertEqual(result["applied"], [])
         self.assertEqual(result["integrity"], "ok")
 

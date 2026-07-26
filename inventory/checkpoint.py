@@ -30,6 +30,10 @@ PURCHASE_PROTECTED_TABLES = (
     "maintenance_records", "maintenance_history", "maintenance_evidence",
     "open_spool_registrations",
 )
+PURCHASE_PHASE2A_PROTECTED_TABLES = PURCHASE_PROTECTED_TABLES + (
+    "purchase_vendors", "purchase_categories", "purchase_orders",
+    "purchase_order_lines", "purchase_history",
+)
 
 
 class CheckpointError(RuntimeError):
@@ -154,6 +158,66 @@ def purchase_foundation_dry_run(database: Path) -> dict:
             "category_count": category_count,
             "production_counts": production_counts,
             "protected": protected_after,
+        }
+
+
+def purchase_phase2a_dry_run(database: Path) -> dict:
+    """Verify migration 014 on a copy without altering existing operational data."""
+    before = verify_database(database)
+    with closing(readonly(database)) as db:
+        protected_before = {
+            table: table_fingerprint(db, table)
+            for table in PURCHASE_PHASE2A_PROTECTED_TABLES
+        }
+    with tempfile.TemporaryDirectory(prefix="ths-purchase-phase2a-") as folder:
+        candidate = Path(folder) / database.name
+        shutil.copy2(database, candidate)
+        if sha256(candidate) != before["sha256"]:
+            raise CheckpointError("Phase 2A candidate hash does not match the source")
+        db = connect(candidate)
+        try:
+            applied = migrate(db)
+        finally:
+            db.close()
+        unexpected = [
+            name for name in applied
+            if name != "014_purchase_evidence_maintenance_links.sql"
+        ]
+        if unexpected:
+            raise CheckpointError(
+                "Phase 2A checkpoint found unexpected pending migrations: "
+                + ", ".join(unexpected)
+            )
+        with closing(readonly(candidate)) as db:
+            protected_after = {
+                table: table_fingerprint(db, table)
+                for table in PURCHASE_PHASE2A_PROTECTED_TABLES
+            }
+            tables = {row[0] for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            counts = {
+                table: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in ("purchase_evidence", "purchase_maintenance_links")
+            }
+            integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
+            migration_count = db.execute(
+                "SELECT COUNT(*) FROM schema_migrations"
+            ).fetchone()[0]
+        if protected_after != protected_before:
+            raise CheckpointError("Phase 2A migration changed protected content")
+        if not {"purchase_evidence", "purchase_maintenance_links"}.issubset(tables):
+            raise CheckpointError("Phase 2A candidate is missing required tables")
+        if any(counts.values()):
+            raise CheckpointError("Phase 2A migration created production records")
+        if integrity != "ok":
+            raise CheckpointError(f"Phase 2A integrity failed: {integrity}")
+        if applied and migration_count != before["migrations"] + 1:
+            raise CheckpointError("Phase 2A migration did not advance exactly one version")
+        return {
+            "before": before, "applied": applied,
+            "migration_count": migration_count, "integrity": integrity,
+            "protected": protected_after, "new_table_counts": counts,
         }
 
 

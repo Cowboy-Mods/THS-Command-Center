@@ -24,6 +24,11 @@ class PurchaseRegistryService:
     MODULE = "purchase-registry"
     MAX_REVIEW_AGE_SECONDS = 30 * 60
     TRACKING_INTENTS = {"individual", "lot", "quantity", "non_inventory"}
+    EVIDENCE_SCOPES = {"purchase", "delivery"}
+    EVIDENCE_TYPES = {"screenshot", "invoice", "receipt", "photo", "document", "other"}
+    MAINTENANCE_RELATIONSHIPS = {
+        "required_part", "corrective_replacement", "spare_stock", "maintenance_supply",
+    }
 
     def __init__(self, database, secret: bytes | None = None):
         self.database = Path(database)
@@ -73,7 +78,93 @@ class PurchaseRegistryService:
                 "SELECT * FROM purchase_history WHERE purchase_order_id=? ORDER BY id",
                 (purchase_id,),
             )]
+            result["evidence"] = [dict(row) for row in db.execute(
+                "SELECT * FROM purchase_evidence WHERE purchase_order_id=? ORDER BY id",
+                (purchase_id,),
+            )]
+            result["maintenance_links"] = [dict(row) for row in db.execute(
+                """SELECT pml.*,mr.event_number,pol.description line_description
+                FROM purchase_maintenance_links pml
+                JOIN maintenance_records mr ON mr.id=pml.maintenance_record_id
+                LEFT JOIN purchase_order_lines pol ON pol.id=pml.purchase_order_line_id
+                WHERE pml.purchase_order_id=? ORDER BY pml.id""", (purchase_id,)
+            )]
             return result
+
+    def review_add_evidence(self, form: dict) -> dict:
+        actor = self._text(form.get("actor"), "actor", 100)
+        purchase_id = self._optional_positive_int(form.get("purchase_id"), "purchase")
+        scope = self._text(form.get("evidence_scope"), "evidence scope", 20)
+        evidence_type = self._text(form.get("evidence_type"), "evidence type", 20)
+        if scope not in self.EVIDENCE_SCOPES:
+            raise PurchaseError("evidence scope must be purchase or delivery")
+        if evidence_type not in self.EVIDENCE_TYPES:
+            raise PurchaseError("select a valid purchase evidence type")
+        path = Path(self._text(form.get("file_path"), "evidence file path", 2000))
+        if not path.is_absolute() or not path.is_file():
+            raise PurchaseError("evidence must be an existing absolute file path")
+        document_date = self._optional_text(form.get("document_date"), 10)
+        if document_date:
+            try:
+                date.fromisoformat(document_date)
+            except ValueError as exc:
+                raise PurchaseError("document date must use YYYY-MM-DD") from exc
+        with closing(connect(self.database)) as db:
+            purchase = self._purchase_snapshot(db, purchase_id)
+        sha256, file_size = self._file_identity(path)
+        values = self._action_values("add_evidence", actor, purchase)
+        values.update({
+            "evidence_scope": scope, "evidence_type": evidence_type,
+            "file_path": str(path), "sha256": sha256, "file_size": file_size,
+            "caption": self._optional_text(form.get("caption"), 1000),
+            "document_date": document_date,
+            "reason": self._optional_text(form.get("reason"), 2000),
+        })
+        return self._review_result(values)
+
+    def commit_add_evidence(self, token: str, *, confirmed: bool) -> dict:
+        return self._commit_phase2a(token, confirmed, "add_evidence")
+
+    def review_link_maintenance(self, form: dict) -> dict:
+        actor = self._text(form.get("actor"), "actor", 100)
+        purchase_id = self._optional_positive_int(form.get("purchase_id"), "purchase")
+        maintenance_id = self._optional_positive_int(
+            form.get("maintenance_record_id"), "maintenance record"
+        )
+        line_id = self._optional_positive_int(form.get("purchase_order_line_id"), "line")
+        relationship = self._text(
+            form.get("relationship_type"), "maintenance relationship", 40
+        )
+        if relationship not in self.MAINTENANCE_RELATIONSHIPS:
+            raise PurchaseError("select a valid maintenance relationship")
+        with closing(connect(self.database)) as db:
+            purchase = self._purchase_snapshot(db, purchase_id)
+            maintenance = db.execute(
+                "SELECT id,event_number,status FROM maintenance_records WHERE id=?",
+                (maintenance_id,),
+            ).fetchone()
+            if not maintenance:
+                raise PurchaseError("maintenance record not found")
+            line = None
+            if line_id:
+                line = db.execute(
+                    """SELECT id,purchase_order_id,line_number,description
+                    FROM purchase_order_lines WHERE id=?""", (line_id,)
+                ).fetchone()
+                if not line or line["purchase_order_id"] != purchase_id:
+                    raise PurchaseError("selected line does not belong to this purchase")
+        values = self._action_values("link_maintenance", actor, purchase)
+        values.update({
+            "maintenance_record": dict(maintenance),
+            "purchase_line": dict(line) if line else None,
+            "relationship_type": relationship,
+            "note": self._optional_text(form.get("note"), 1000),
+            "reason": self._optional_text(form.get("reason"), 2000),
+        })
+        return self._review_result(values)
+
+    def commit_link_maintenance(self, token: str, *, confirmed: bool) -> dict:
+        return self._commit_phase2a(token, confirmed, "link_maintenance")
 
     def review_create(self, form: dict) -> dict:
         actor = self._text(form.get("actor"), "actor", 100)
@@ -248,6 +339,159 @@ class PurchaseRegistryService:
             raise
         finally:
             db.close()
+
+    def _commit_phase2a(self, token, confirmed, expected_action):
+        if not confirmed:
+            raise PurchaseError("explicit confirmation is required")
+        values, body = self._verify(token)
+        if (
+            values.get("version") != 1 or values.get("module") != self.MODULE
+            or values.get("action") != expected_action
+        ):
+            raise PurchaseError("purchase action preview is invalid")
+        nonce = values.get("request_nonce")
+        if (
+            not isinstance(nonce, str) or len(nonce) != 32
+            or any(character not in "0123456789abcdef" for character in nonce)
+        ):
+            raise PurchaseError("purchase preview nonce is invalid")
+        db = connect(self.database)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM purchase_history WHERE request_nonce=?",
+                (values["request_nonce"],),
+            ).fetchone():
+                raise PurchaseError("this purchase preview was already used")
+            current = self._purchase_snapshot(db, values["purchase"]["id"])
+            if current != values["purchase"]:
+                raise PurchaseError("purchase changed after preview; review again")
+            if expected_action == "add_evidence":
+                result = self._commit_evidence(db, values)
+            else:
+                result = self._commit_maintenance_link(db, values)
+            history_id = self._phase2a_history(
+                db, values, body, result["snapshot"]
+            )
+            db.commit()
+            return {**result, "history_id": history_id}
+        except sqlite3.IntegrityError as exc:
+            db.rollback()
+            raise PurchaseError(str(exc)) from exc
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def _commit_evidence(self, db, values):
+        path = Path(values["file_path"])
+        sha256, file_size = self._file_identity(path)
+        if sha256 != values["sha256"] or file_size != values["file_size"]:
+            raise PurchaseError("evidence file changed after preview; review again")
+        evidence_id = db.execute(
+            """INSERT INTO purchase_evidence(
+            evidence_uuid,purchase_order_id,evidence_scope,evidence_type,file_path,
+            sha256,file_size,caption,document_date,added_by)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), values["purchase"]["id"], values["evidence_scope"],
+                values["evidence_type"], values["file_path"], sha256, file_size,
+                values["caption"], values["document_date"], values["actor"],
+            ),
+        ).lastrowid
+        snapshot = dict(db.execute(
+            "SELECT * FROM purchase_evidence WHERE id=?", (evidence_id,)
+        ).fetchone())
+        return {
+            "purchase_id": values["purchase"]["id"],
+            "purchase_number": values["purchase"]["purchase_number"],
+            "evidence_id": evidence_id, "sha256": sha256,
+            "evidence_scope": values["evidence_scope"], "snapshot": snapshot,
+        }
+
+    def _commit_maintenance_link(self, db, values):
+        maintenance = db.execute(
+            "SELECT id,event_number,status FROM maintenance_records WHERE id=?",
+            (values["maintenance_record"]["id"],),
+        ).fetchone()
+        if not maintenance or dict(maintenance) != values["maintenance_record"]:
+            raise PurchaseError("maintenance record changed after preview; review again")
+        line = values["purchase_line"]
+        if line:
+            current_line = db.execute(
+                """SELECT id,purchase_order_id,line_number,description
+                FROM purchase_order_lines WHERE id=?""", (line["id"],)
+            ).fetchone()
+            if not current_line or dict(current_line) != line:
+                raise PurchaseError("purchase line changed after preview; review again")
+        link_id = db.execute(
+            """INSERT INTO purchase_maintenance_links(
+            link_uuid,purchase_order_id,purchase_order_line_id,maintenance_record_id,
+            relationship_type,note,linked_by) VALUES (?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), values["purchase"]["id"],
+                line["id"] if line else None, maintenance["id"],
+                values["relationship_type"], values["note"], values["actor"],
+            ),
+        ).lastrowid
+        snapshot = dict(db.execute(
+            "SELECT * FROM purchase_maintenance_links WHERE id=?", (link_id,)
+        ).fetchone())
+        return {
+            "purchase_id": values["purchase"]["id"],
+            "purchase_number": values["purchase"]["purchase_number"],
+            "link_id": link_id, "maintenance_number": maintenance["event_number"],
+            "relationship_type": values["relationship_type"], "snapshot": snapshot,
+        }
+
+    def _phase2a_history(self, db, values, body, snapshot):
+        return db.execute(
+            """INSERT INTO purchase_history(
+            history_uuid,request_nonce,purchase_order_id,action_type,previous_status,
+            new_status,snapshot,payload_sha256,reason,actor)
+            VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                str(uuid.uuid4()), values["request_nonce"], values["purchase"]["id"],
+                values["action"], values["purchase"]["status"],
+                values["purchase"]["status"],
+                json.dumps(snapshot, sort_keys=True, separators=(",", ":")),
+                hashlib.sha256(body).hexdigest(), values.get("reason"), values["actor"],
+            ),
+        ).lastrowid
+
+    def _purchase_snapshot(self, db, purchase_id):
+        row = db.execute(
+            """SELECT id,purchase_number,status,updated_at,total_cents
+            FROM purchase_orders WHERE id=?""", (purchase_id,)
+        ).fetchone()
+        if not row:
+            raise PurchaseError("purchase not found")
+        return dict(row)
+
+    def _action_values(self, action, actor, purchase):
+        return {
+            "version": 1, "module": self.MODULE, "action": action,
+            "reviewed_at": int(time.time()), "request_nonce": uuid.uuid4().hex,
+            "actor": actor, "purchase": purchase,
+        }
+
+    def _review_result(self, values):
+        body = self._canonical(values)
+        return {
+            "token": self._sign_body(body), "values": values,
+            "payload_sha256": hashlib.sha256(body).hexdigest(),
+        }
+
+    @staticmethod
+    def _file_identity(path):
+        if not path.is_file():
+            raise PurchaseError("evidence file no longer exists")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest(), path.stat().st_size
 
     def _review_lines(self, db, source) -> list[dict]:
         if not isinstance(source, list) or not source:

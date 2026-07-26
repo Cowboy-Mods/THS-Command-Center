@@ -130,3 +130,15 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   presentation with linked maintenance details.
 - Added the Personal by Design, One Engine. Your Workshop., and honest operational
   restriction principles to the tracked Maeve design philosophy.
+
+## 2026-07-26 — Purchase Registry Phase 2A
+
+- Added signed, expiring, zero-write previews for immutable purchase evidence and
+  controlled maintenance linkage.
+- Kept purchase evidence, delivery evidence, inventory receipt, maintenance
+  relevance, and actual installation or consumption as separate facts.
+- Added SHA-256 and file-size revalidation, explicit confirmation, replay
+  protection, immutable history, and atomic rollback.
+- Added migration 014 dry-run protection for all legacy and Phase 1 purchase data.
+- Did not create the Bambu purchase, process the Overture receipt, or migrate
+  production.
