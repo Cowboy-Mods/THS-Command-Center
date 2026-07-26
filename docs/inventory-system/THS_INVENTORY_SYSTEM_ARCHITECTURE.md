@@ -152,3 +152,22 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 4. Add remaining consume/reconcile/project-completion service methods before exposing those actions.
 5. Add project allocation and completion services, then optional Bambu integration.
 
+Before the first live replacement, use [Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) only for positively identified current physical assignments. Do not reconstruct historical White or Orange outgoing spools without verified permanent IDs and slots.
+
+## Filament identity versus AMS-reported identity
+
+The inventory catalog and physical `THS-FIL` instance remain the source of truth for what filament physically exists. Future RFID/AMS integration must store reported identity separately and must never rewrite the true manufacturer, product, material, or color merely because a reused tag reports a different Bambu profile.
+
+Future integration metadata must support:
+
+- true inventory identity;
+- AMS-reported manufacturer, product, material, color, and profile;
+- RFID or tag identity and identification method;
+- manual-identity-override status;
+- original tag source when known;
+- a warning when the AMS-reported profile differs from verified filament identity.
+
+Example: an Overture White refill using a reused Bambu RFID tag remains an Overture inventory instance. The Bambu profile is an AMS observation, `reused RFID tag` is the identification method, and manual identity override is true.
+
+Cowboy has ordered one bulk box expected to contain four Overture White refill rolls. Nothing is received until arrival, quantity, and condition are physically verified. If four acceptable refills arrive, receiving must create four individually tracked physical instances linked to one purchase or receiving batch. Purchase/receiving-batch modeling and RFID metadata are future requirements and are not added by the verified-AMS checkpoint.
+
