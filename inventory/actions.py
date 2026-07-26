@@ -873,6 +873,7 @@ class InventoryActionService:
     def unload_instance_from_ams(
         self, instance_id: int, destination_location_id: int, *,
         reason: str | None = None, reverses_action_id: int | None = None,
+        request_nonce: str | None = None,
     ) -> int:
         previous = self._instance(instance_id)
         assignment = self.db.execute(
@@ -905,6 +906,7 @@ class InventoryActionService:
                 previous["permanent_id"], previous, new, True,
                 reverse_action="load_instance_into_ams", reason=reason,
                 transaction_id=tx, reverses_action_id=reverses_action_id,
+                request_nonce=request_nonce,
             )
 
         return self._atomic(work)

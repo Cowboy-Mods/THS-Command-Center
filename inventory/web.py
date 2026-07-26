@@ -21,6 +21,7 @@ from .initialization import (
     InitializeVerifiedAMSStateWorkflow,
 )
 from .orders import OrderReceiptError, OrderReceiptWorkflow
+from .returning import ReturnSpoolError, ReturnSpoolToStorageWorkflow
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -49,6 +50,7 @@ class InventoryWebApp:
         self.replacement = ReplaceActiveFilamentSpoolWorkflow(self.database)
         self.initialization = InitializeVerifiedAMSStateWorkflow(self.database)
         self.order_receiving = OrderReceiptWorkflow(self.database)
+        self.returning = ReturnSpoolToStorageWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -70,6 +72,8 @@ class InventoryWebApp:
             body, status = self._initialization_error(str(exc)), 422
         except OrderReceiptError as exc:
             body, status = self._order_receipt_error(str(exc)), 422
+        except ReturnSpoolError as exc:
+            body, status = self._return_spool_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -113,6 +117,16 @@ class InventoryWebApp:
                 raise InitializeAMSError("explicit initialization confirmation is required")
             return self._initialization_complete(
                 self.initialization.commit(form.get("review_token", ""))
+            ), 201
+        if method == "GET" and path == "/inventory/filament/ams/return":
+            return self._return_spool_form(), 200
+        if method == "POST" and path == "/inventory/filament/ams/return/review":
+            return self._return_spool_review(self.returning.review(form)), 200
+        if method == "POST" and path == "/inventory/filament/ams/return/confirm":
+            if form.get("confirm") != "return-spool":
+                raise ReturnSpoolError("explicit return confirmation is required")
+            return self._return_spool_complete(
+                self.returning.commit(form.get("review_token", ""))
             ), 201
         if method == "POST" and path == "/orders/receive/review":
             return self._order_receipt_review(self.order_receiving.review(form)), 200
@@ -187,6 +201,10 @@ class InventoryWebApp:
         <a href="/inventory/filament/receive">
           <strong>Receive Verified Sealed Spool</strong>
           <span>Add one verified sealed physical spool.</span>
+        </a>
+        <a href="/inventory/filament/ams/return">
+          <strong>Return AMS Spool to Storage</strong>
+          <span>Unload one active spool without changing its recorded quantity.</span>
         </a>
         <a href="/orders">
           <strong>Receive Pending Order</strong>
@@ -265,13 +283,19 @@ class InventoryWebApp:
               <p>Receive one verified sealed spool with review and explicit confirmation.</p>
               <strong>Start workflow →</strong></div>
             </a>
-            <article class="workflow-card future" aria-disabled="true">
+            <a class="workflow-card" href="/inventory/filament/ams/return">
               <span class="workflow-number">04</span><div>
+              <h3>Return AMS Spool to Storage</h3>
+              <p>Unload one active spool to verified storage without changing its remaining weight.</p>
+              <strong>Start workflow →</strong></div>
+            </a>
+            <article class="workflow-card future" aria-disabled="true">
+              <span class="workflow-number">05</span><div>
               <h3>Receive Open Spool</h3><p>Planned controlled workflow.</p>
               <strong>Future</strong></div>
             </article>
             <article class="workflow-card future" aria-disabled="true">
-              <span class="workflow-number">05</span><div>
+              <span class="workflow-number">06</span><div>
               <h3>Inventory Adjustments</h3><p>Planned administrator-only workflow.</p>
               <strong>Future · admin only</strong></div>
             </article>
@@ -970,6 +994,125 @@ class InventoryWebApp:
             "AMS initialization stopped", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams">AMS Units</a> / '
             '<span aria-current="page">Initialization stopped</span>',
+        )
+
+    def _return_spool_form(self) -> str:
+        options = self.returning.options()
+        spools = "".join(
+            f'<option value="{spool["id"]}">{esc(spool["permanent_id"])} — '
+            f'{esc(spool["manufacturer"])} {esc(spool["color"])} — '
+            f'{esc(spool["equipment_name"])} Slot {spool["slot_number"]}</option>'
+            for spool in options["spools"]
+        )
+        locations = "".join(
+            f'<option value="{location["id"]}">{esc(location["name"])}</option>'
+            for location in options["locations"]
+        )
+        empty = (
+            '<div class="notice"><strong>No loaded spools are available</strong>'
+            '<p>Initialize or load a verified spool before using this workflow.</p></div>'
+            if not options["spools"] else ""
+        )
+        content = f"""{empty}
+        <div class="notice"><strong>Controlled AMS unload</strong>
+          <p>Use this only after physically removing the selected spool and placing it
+          in the selected storage location. Remaining weight is preserved.</p></div>
+        <form class="receive-form" method="post"
+          action="/inventory/filament/ams/return/review">
+          <fieldset><legend>Verified spool return</legend><div class="form-grid">
+            <label class="wide-field"><span>Currently loaded spool</span>
+              <select name="instance_id" required><option value="">Select loaded spool</option>
+              {spools}</select></label>
+            <label><span>Storage destination</span><select name="destination_location_id"
+              required><option value="">Select destination</option>{locations}</select></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy"
+              maxlength="100" required></label>
+            <label class="wide-field"><span>Reason (optional)</span>
+              <input name="reason" maxlength="500"
+                value="Verified physical return from AMS to storage"></label>
+          </div>
+          <label class="choice"><input type="checkbox" name="physically_verified"
+            value="yes" required><span><strong>I physically verified the spool,
+            AMS slot, and storage destination.</strong><small>No inventory record
+            changes until the confirmation step.</small></span></label></fieldset>
+          <div class="form-actions"><a href="/">Cancel</a>
+            <button type="submit">Preview return to storage</button></div>
+        </form>"""
+        return self._shell(
+            "Return AMS Spool to Storage", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Return spool to storage</span>',
+            description="Unload one verified active spool without changing its remaining weight.",
+        )
+
+    def _return_spool_review(self, review) -> str:
+        spool = review.values["spool"]
+        destination = review.values["destination"]
+        content = f"""
+        <div class="notice"><strong>Preview only — zero writes</strong>
+          <p>Confirm the exact spool, AMS source, and physical storage destination.</p></div>
+        <section class="replacement-timeline return-preview"
+          aria-label="Return AMS spool to storage preview">
+          <article><span class="step-number">1</span><div><p>Unload from AMS</p>
+            <h2>{esc(spool["permanent_id"])}</h2>
+            <span>{esc(spool["equipment_name"])} Slot {spool["slot_number"]}</span>
+            <small>{esc(spool["manufacturer"])} · {esc(spool["color"])}</small>
+          </div></article>
+          <span class="timeline-arrow" aria-hidden="true">→</span>
+          <article><span class="step-number">2</span><div><p>Place in verified storage</p>
+            <h2>{esc(destination["name"])}</h2>
+            <span>State becomes Open</span>
+            <small>Remaining weight stays {grams(spool["remaining_quantity"])}</small>
+          </div></article>
+        </section>
+        <form class="confirm-form" method="post"
+          action="/inventory/filament/ams/return/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice confirm-choice"><input type="checkbox" name="confirm"
+            value="return-spool" required><span><strong>Record this exact verified
+            return.</strong><small>The unload, move, transaction, and audit succeed
+            together or nothing is saved.</small></span></label>
+          <div class="form-actions"><a href="/inventory/filament/ams/return">
+            Go back without saving</a><button type="submit">Confirm return to storage</button></div>
+        </form>"""
+        return self._shell(
+            "Preview Return to Storage", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams/return">'
+            'Return spool</a> / <span aria-current="page">Preview</span>',
+        )
+
+    def _return_spool_complete(self, result: dict) -> str:
+        spool = result["spool"]
+        destination = result["destination"]
+        content = f"""
+        <div class="success-panel"><p class="eyebrow">Verified return completed</p>
+          <h2>{esc(spool["permanent_id"])} is now in {esc(destination["name"])}</h2>
+          <p>The AMS slot is available and the spool remains Open with
+          {grams(result["remaining_quantity"])} recorded.</p></div>
+        <section class="panel"><h2>Immutable history</h2><dl class="detail-list">
+          <div><dt>Action</dt><dd>#{result["action_id"]}</dd></div>
+          <div><dt>Transaction</dt><dd>#{result["transaction_id"]}</dd></div>
+          <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
+          <div><dt>Weight changed</dt><dd>No</dd></div>
+        </dl></section>
+        <div class="form-actions"><a href="/inventory/filament/ams/return">
+          Return another spool</a>
+          <a class="primary-link" href="/inventory/filament/ams">View AMS Units</a></div>"""
+        return self._shell(
+            "Return to Storage Complete", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Return completed</span>',
+        )
+
+    def _return_spool_error(self, message: str) -> str:
+        content = f"""<section class="empty-state"><p class="eyebrow">No changes saved</p>
+          <h2>Spool return stopped</h2><p>{esc(message)}</p>
+          <a class="primary-link" href="/inventory/filament/ams/return">
+            Start a fresh verified return</a></section>"""
+        return self._shell(
+            "Spool return stopped", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Return stopped</span>',
         )
 
     def _method_not_allowed(self) -> str:

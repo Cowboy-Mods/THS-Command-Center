@@ -25,7 +25,7 @@ Add actions for:
 - Add sealed spool
 - Open sealed spool
 - Load spool into AMS
-- Unload spool to wall storage
+- Unload spool to wall storage — implemented through the controlled [Return AMS Spool to Storage](../inventory-system/RETURN_AMS_SPOOL_TO_STORAGE.md) workflow
 - Move spool between locations
 - Correct remaining grams
 - Mark spool empty or retired
