@@ -168,11 +168,13 @@ Represents one real spool or refill in the workshop.
 
 Do not require NFC or QR tags for v1. Add them later only where they reduce work for third-party, loose, or frequently moved spools. Bambu RFID remains useful for compatible Bambu filament.
 
-### Reused RFID tags and true filament identity
+### Simple RFID policy and true filament identity
 
-Maeve must preserve verified physical filament identity independently from AMS-reported or RFID-reported identity. A reused Bambu RFID tag on an Overture refill may help the AMS select a profile, but it must not relabel the Overture inventory record as Bambu.
+THS Inventory owns the verified manufacturer, product, material, color, spool status, and usage. AMS-reported information may supplement those facts but must never overwrite them.
 
-Future records should distinguish the verified inventory manufacturer/product/material/color from the AMS-reported profile, RFID/tag identity, identification method, manual override status, original tag source, and mismatch warnings.
+An original Bambu RFID tag may be stored as an optional external identifier for the Bambu spool it came with. Do not design around transferring Bambu tags to Overture or other brands. Enter non-Bambu filament manually in Bambu Studio and track it under its true identity in THS Inventory.
+
+Cowboy temporarily transferred a Bambu tag in a pinch but plans to stop. No custom THS RFID system is required now. Barcode, QR, or RFID tagging for non-Bambu inventory remains an optional future enhancement.
 
 One bulk box of Overture White is currently on order and is expected, but not guaranteed, to contain four refill rolls. Do not receive it before Cowboy verifies the delivered quantity and condition. If four refills are verified, represent them as four individually tracked physical instances linked to one purchase or receiving batch.
 
