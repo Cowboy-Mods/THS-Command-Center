@@ -101,13 +101,15 @@ Normal dashboard, inventory, product, spool, AMS, search, filter, and placeholde
 
 The only mutation routes are the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md), [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md), and [Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) confirmations. Their signed previews and explicit confirmations call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
 
+The Dashboard is the primary workflow navigation hub. Clearly labeled cards launch every available controlled workflow without requiring users to know or type URLs. The top-right **Controlled workflows** control is a keyboard-accessible dropdown that exposes the same live actions from every page. Planned actions such as Receive Open Spool and administrator-only Inventory Adjustments are visible as disabled future items and do not link to placeholder mutation routes.
+
 ## Tests
 
 ```powershell
 py -3 -m unittest discover -v
 ```
 
-The interface suite covers the 24 original dashboard acceptance scenarios, 14 receive-workflow scenarios, 16 replacement-workflow scenarios, and 16 verified-AMS-initialization scenarios in addition to the inventory/database and action-service suites.
+The interface suite covers the 24 original dashboard acceptance scenarios plus three workflow-discovery scenarios, 14 receive-workflow scenarios, 16 replacement-workflow scenarios, and 16 verified-AMS-initialization scenarios in addition to the inventory/database and action-service suites.
 
 ## Placeholder modules
 
