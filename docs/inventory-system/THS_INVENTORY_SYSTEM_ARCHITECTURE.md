@@ -4,6 +4,10 @@
 
 THS Inventory System is a local-first, auditable inventory platform for makers, workshops, and small operations. Filament is the first module, not the system boundary. The same core can represent electronics, RC components, leather, engraving supplies, tools, hardware, consumables, replacement parts, and future modules without adding trade-specific columns to one giant table.
 
+> **Built for my shop first, but not trapped inside my shop.**
+
+Cowboy's THS installation may be deeply customized, but the shared core remains shop-neutral. Shop name, branding, printers, AMS units, alerts, workflows, terminology, and layouts belong in configuration rather than required THS hard-coding. Self-hosting remains fully functional; cloud services and phone clients remain optional. See [Open-Source Project Principles](../OPEN_SOURCE_PROJECT_PRINCIPLES.md) for the implemented, planned, and deferred boundaries.
+
 Maeve is the assistant and interface that will query this system. Maeve is not the database name.
 
 ## Stack selected at this checkpoint

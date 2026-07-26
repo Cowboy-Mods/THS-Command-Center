@@ -1,6 +1,10 @@
 # THS-Command-Center
 Open-source smart workshop assistant for makers. Powered by Raspberry Pi, Home Assistant, and custom 3D-printed hardware.
 
+> **Built for my shop first, but not trapped inside my shop.**
+
+Cowboy's THS installation can be deeply customized, while the shared core stays shop-neutral and self-hostable. Branding, equipment, terminology, alerts, workflows, and layouts are configuration goals rather than required THS hard-coding. See the [Open-Source Project Principles](docs/OPEN_SOURCE_PROJECT_PRINCIPLES.md) for implemented, planned, and deferred boundaries.
+
 THS COMMAND CENTER
 
 Smart Workshop Assistant
@@ -22,6 +26,7 @@ Features
 ## Project Logs
 
 - [Maeve and THS Command Center Build Log](docs/BUILD_LOG.md)
+- [Open-Source Project Principles](docs/OPEN_SOURCE_PROJECT_PRINCIPLES.md)
 
 ## THS Inventory System
 

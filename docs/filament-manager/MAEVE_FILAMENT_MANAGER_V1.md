@@ -2,6 +2,10 @@
 
 > **Architecture notice:** This page is the original product plan for the first Filament Inventory module inside the broader, category-agnostic [THS Inventory System](../inventory-system/THS_INVENTORY_SYSTEM_ARCHITECTURE.md). The inventory database is not named Maeve and is not filament-only. Where this early plan conflicts with the verified database checkpoint, the architecture and [Filament Module v1](../inventory-system/FILAMENT_MODULE_V1.md) pages control.
 
+> **Built for my shop first, but not trapped inside my shop.**
+
+Maeve may be deeply customized for Cowboy's THS shop, while the shared core stays shop-neutral. Printer brands, AMS or material systems, alerts, terminology, workflows, branding, and layouts must remain configurable. Self-hosting is implemented as the operating model; cloud services, phone clients, community applications, plugins, and neutral Bambu Lab/Prusa/Klipper/OctoPrint integration boundaries are planned or deferred as labeled in the [Open-Source Project Principles](../OPEN_SOURCE_PROJECT_PRINCIPLES.md). This document does not claim that PWA, iPhone, cloud, or live Bambu integration is complete.
+
 ## Purpose
 
 Maeve Filament Manager is the THS Command Center source of truth for filament stock, physical spools, AMS locations, print reservations, usage deductions, emergency minimums, and reorder warnings.
