@@ -128,6 +128,62 @@ class InventoryActionService:
 
         return self._atomic(work)
 
+    def ensure_catalog_item_attribute(
+        self, catalog_item_id: int, attribute_name: str, value: str | float,
+    ) -> int:
+        definition = self.db.execute(
+            """SELECT ad.id,ad.data_type FROM attribute_definitions ad
+            JOIN item_type_attributes ita ON ita.attribute_definition_id=ad.id
+            JOIN catalog_items ci ON ci.item_type_id=ita.item_type_id
+            WHERE ci.id=? AND ad.name=?""",
+            (catalog_item_id, attribute_name),
+        ).fetchone()
+        if not definition:
+            raise InventoryActionError("attribute is not configured for this catalog item type")
+        column = "numeric_value" if definition["data_type"] == "decimal" else "text_value"
+        normalized = float(value) if column == "numeric_value" else str(value).strip()
+        if column == "text_value" and not normalized:
+            raise InventoryActionError(f"{attribute_name} is required")
+        existing = self.db.execute(
+            "SELECT text_value,numeric_value FROM catalog_item_attribute_values "
+            "WHERE catalog_item_id=? AND attribute_definition_id=?",
+            (catalog_item_id, definition["id"]),
+        ).fetchone()
+        if existing:
+            current = existing[column]
+            if current != normalized:
+                raise InventoryActionError(
+                    f"existing catalog product has a different {attribute_name}"
+                )
+            return definition["id"]
+
+        def work():
+            self.db.execute(
+                f"INSERT INTO catalog_item_attribute_values"
+                f"(catalog_item_id,attribute_definition_id,{column}) VALUES (?,?,?)",
+                (catalog_item_id, definition["id"], normalized),
+            )
+            new = {
+                "catalog_item_id": catalog_item_id,
+                "attribute_definition_id": definition["id"],
+                "attribute_name": attribute_name, column: normalized,
+            }
+            self._audit(
+                "create_catalog_item_attribute", "catalog_item", catalog_item_id,
+                str(catalog_item_id), None, new, False,
+            )
+            return definition["id"]
+
+        return self._atomic(work)
+
+    def preview_next_human_id(self, item_type_id: int) -> str:
+        row = self.db.execute(
+            "SELECT id_prefix FROM item_types WHERE id=?", (item_type_id,)
+        ).fetchone()
+        if not row or not row["id_prefix"]:
+            raise InventoryActionError("item type does not generate permanent IDs")
+        return self._next_id_for_prefix(row["id_prefix"])
+
     def add_individual_instance(
         self, catalog_item_id: int, *, state: str, location_id: int | None,
         original_quantity: float, remaining_quantity: float, unit_id: int,
@@ -643,6 +699,9 @@ class InventoryActionService:
         ).fetchone()[0]
         if not prefix:
             return None
+        return self._next_id_for_prefix(prefix)
+
+    def _next_id_for_prefix(self, prefix: str) -> str:
         maximum = self.db.execute(
             "SELECT MAX(CAST(SUBSTR(permanent_id,LENGTH(?)+2) AS INTEGER)) "
             "FROM inventory_instances WHERE permanent_id LIKE ?",
