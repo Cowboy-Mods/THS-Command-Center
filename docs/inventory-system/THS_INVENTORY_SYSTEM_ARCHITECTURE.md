@@ -70,6 +70,16 @@ Active partial unique indexes enforce one spool per AMS slot and one AMS slot pe
 
 Transaction headers and lines are immutable and use restrictive foreign keys. Normal operations append compensating transactions instead of editing history. Empty individual items are marked empty and archived; they retain their ID and history but disappear from active totals.
 
+## Centralized Inventory Action Service
+
+`inventory/actions.py` is the exclusive normal mutation boundary. Editable UI routes, APIs, Maeve, importers, printer integrations, project workflows, and future modules may not write inventory tables directly.
+
+Migration `005_inventory_action_service.sql` adds the immutable `inventory_actions` ledger. Every successful action records who acted, when, what happened, the initiating module, optional reason, affected entity/human ID, complete previous and new state JSON, reversibility, named reverse action, related inventory transaction, and reversal linkage.
+
+The service owns validation, business rules, savepoint-based atomicity, inventory transaction creation, action logging, and supported reversal dispatch. Undo appends a new action and never edits the original record. The CSV importer now routes catalog and stock changes through this service. Numbered migrations and verified seed migrations remain the explicit database-bootstrap exception.
+
+See [Inventory Action Service](INVENTORY_ACTION_SERVICE.md) for the required integration contract and supported methods.
+
 ## Reservations
 
 `reservations` records planned demand without reducing physical remaining quantity. `reservation_allocations` ties demand to an instance or lot. A database trigger rejects an individual allocation above available quantity unless the reservation explicitly sets its shortage override. Release and final consumption remain separate operations.
@@ -136,9 +146,9 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 
 ## Next milestones
 
-1. Cowboy and ChatGPT review the read-only dashboard and physical weight assumptions.
-2. Add service methods that atomically move, load, unload, reserve, consume, and reconcile stock.
+1. Cowboy and ChatGPT review the Inventory Action Service boundary and physical weight assumptions.
+2. Choose the first narrow editable workflow and connect it only to the action service.
 3. Verify open-wall colors, grams, and rack positions through a staged import.
-4. Add the first deliberately scoped manual workflow only after checkpoint approval.
+4. Add remaining consume/reconcile/project-completion service methods before exposing those actions.
 5. Add project allocation and completion services, then optional Bambu integration.
 
