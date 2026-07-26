@@ -1,5 +1,7 @@
 # Maeve Filament Manager v1
 
+> **Architecture notice:** This page is the original product plan for the first Filament Inventory module inside the broader, category-agnostic [THS Inventory System](../inventory-system/THS_INVENTORY_SYSTEM_ARCHITECTURE.md). The inventory database is not named Maeve and is not filament-only. Where this early plan conflicts with the verified database checkpoint, the architecture and [Filament Module v1](../inventory-system/FILAMENT_MODULE_V1.md) pages control.
+
 ## Purpose
 
 Maeve Filament Manager is the THS Command Center source of truth for filament stock, physical spools, AMS locations, print reservations, usage deductions, emergency minimums, and reorder warnings.
@@ -21,8 +23,8 @@ Bambu Studio remains an input for RFID-recognized filament and printer/AMS statu
 
 - Sealed stock
 - Open wall stock
-- AMS 1 slots 1–4
-- AMS 2 slots 1–4
+- AMS 1 slots 1â€“4
+- AMS 2 slots 1â€“4
 - In use / active print
 - Empty / retired
 
@@ -121,6 +123,8 @@ Represents one real spool or refill in the workshop.
 
 ## Initial AMS State
 
+> Historical planning note only. These assignments were not re-verified for the database checkpoint and have **not** been seeded. AMS 1 and AMS 2 currently seed as four empty, assignable slots each.
+
 ### AMS 1
 
 - Slot 1: Black
@@ -137,7 +141,7 @@ Represents one real spool or refill in the workshop.
 
 ## Initial Automation Roadmap
 
-### Phase A — Foundation
+### Phase A â€” Foundation
 
 - SQLite database
 - Seed current inventory
@@ -145,14 +149,14 @@ Represents one real spool or refill in the workshop.
 - Manual stock and location actions
 - Emergency minimum settings
 
-### Phase B — Print Transactions
+### Phase B â€” Print Transactions
 
 - Enter slicer usage by project, plate, material, and AMS slot
 - Reserve stock
 - Complete print and deduct stock
 - Review failed/canceled jobs
 
-### Phase C — Bambu Integration
+### Phase C â€” Bambu Integration
 
 - Read printer state over the local network
 - Read AMS slot assignments
@@ -160,10 +164,11 @@ Represents one real spool or refill in the workshop.
 - Import sliced filament estimates when technically available
 - Automatically create and complete usage transactions
 
-### Phase D — Optional Tags
+### Phase D â€” Optional Tags
 
 Do not require NFC or QR tags for v1. Add them later only where they reduce work for third-party, loose, or frequently moved spools. Bambu RFID remains useful for compatible Bambu filament.
 
 ## Success Criteria
 
 A normal completed print should require no manual gram calculation. Maeve should know which AMS spool was used, deduct the recorded slicer estimate, update remaining stock, and warn when sealed emergency stock falls below its minimum.
+
