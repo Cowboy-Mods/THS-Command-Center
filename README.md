@@ -27,6 +27,7 @@ Features
 
 - [Extensible inventory architecture](docs/inventory-system/THS_INVENTORY_SYSTEM_ARCHITECTURE.md)
 - [Centralized Inventory Action Service](docs/inventory-system/INVENTORY_ACTION_SERVICE.md)
+- [Receive a Verified Sealed Spool](docs/inventory-system/RECEIVE_VERIFIED_SEALED_SPOOL.md)
 - [Filament Inventory module v1](docs/inventory-system/FILAMENT_MODULE_V1.md)
 - [Read-only dashboard v1](docs/inventory-system/READ_ONLY_DASHBOARD_V1.md)
 - [Original Maeve Filament Manager plan](docs/filament-manager/MAEVE_FILAMENT_MANAGER_V1.md)
