@@ -55,6 +55,8 @@ The service centralizes:
 
 Each method uses a SQLite savepoint. A failed validation, duplicate ID, constraint failure, transaction failure, or audit failure rolls back the complete action. When called inside an import batch transaction, the action participates in the outer batch rollback.
 
+Composite shop operations use an immutable parent workflow transaction. The first is [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md). Its three child actions retain individual transactions and audit snapshots while sharing `workflow_transaction_id`.
+
 ## Supported actions
 
 Configuration and receiving:
@@ -78,6 +80,9 @@ Inventory operations:
 - `release_reservation`
 - `load_instance_into_ams`
 - `unload_instance_from_ams`
+- `mark_loaded_spool_empty`
+- `open_sealed_spool`
+- `replace_active_filament_spool`
 - `reverse_action`
 
 Additional workflows must be added as service methods before any caller exposes them.
@@ -139,5 +144,8 @@ Dedicated service tests cover context validation, catalog setup and attributes, 
 
 ## Next checkpoint
 
-The first editable workflow is complete: [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md). The next checkpoint is a separate narrow **Open Existing Sealed Spool** workflow.
+The receive workflow and first composite shop workflow are complete:
+
+- [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md)
+- [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md)
 
