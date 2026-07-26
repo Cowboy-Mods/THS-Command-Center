@@ -89,7 +89,7 @@ If only the currently loaded Jade White and Orange replacements can be positivel
 
 The Orange replacement is verified as having occurred at layer 283. One of the two Bambu Lab PLA Basic Orange spools is now physically opened and loaded, leaving one sealed reserve after the controlled workflow is committed. Permanent spool identity and the exact AMS slot must still be verified rather than inferred. The one-spool sealed reserve is a future shopping/reorder-list requirement, not an authorization for this initialization workflow to create a reorder rule.
 
-The ordered Overture White bulk box is not inventory. Receive it only after arrival and verification of actual count and condition. If it contains four acceptable refills, a future receiving workflow must create four individual physical instances linked to one purchase or receiving batch. Reused Bambu RFID tags must remain observation/integration metadata and must never replace the refills' verified Overture identity.
+The ordered Overture White bulk box is not inventory. Receive it only after arrival and verification of actual count and condition. If it contains four acceptable refills, a future receiving workflow must create four individual physical instances linked to one purchase or receiving batch. Enter non-Bambu filament manually in Bambu Studio and preserve its verified identity in THS Inventory; do not design this workflow around transferred Bambu RFID tags.
 
 ## Testing
 
