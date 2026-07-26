@@ -60,12 +60,12 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         self.assertIn("Replace Active Filament Spool", page)
         self.assertIn("Receive Verified Sealed Spool", page)
 
-    def test_02c_future_workflows_are_visible_but_not_linked(self):
+    def test_02c_open_spool_is_live_and_adjustments_remain_future(self):
         _, _, page = self.page("/")
-        self.assertIn("Receive Open Spool", page)
+        self.assertIn("Register Existing Open Spool", page)
         self.assertIn("Inventory Adjustments", page)
-        self.assertEqual(page.count('aria-disabled="true"'), 2)
-        self.assertNotIn('href="/inventory/filament/open-spool"', page)
+        self.assertEqual(page.count('aria-disabled="true"'), 1)
+        self.assertIn('href="/inventory/filament/register-open"', page)
         self.assertNotIn('href="/inventory/adjustments"', page)
 
     def test_03_dashboard_displays_30_physical_spools(self):

@@ -368,6 +368,9 @@ class InventoryQueries:
                 """
                 SELECT ii.*,ci.product_line,ci.variant color,ci.notes product_notes,
                   m.name manufacturer,l.name location_name,
+                  osr.quantity_mode,osr.remaining_quantity registered_remaining_quantity,
+                  osr.quantity_confidence,osr.source registration_source,
+                  osr.note registration_note,
                   MAX(CASE WHEN ad.name='material' THEN av.text_value END) material,
                   MAX(CASE WHEN ad.name='diameter_mm' THEN av.numeric_value END) diameter_mm,
                   COALESCE((SELECT SUM(ra.quantity) FROM reservation_allocations ra
@@ -378,6 +381,7 @@ class InventoryQueries:
                 JOIN item_types it ON it.id=ci.item_type_id AND it.name='Filament'
                 JOIN manufacturers m ON m.id=ci.manufacturer_id
                 LEFT JOIN locations l ON l.id=ii.location_id
+                LEFT JOIN open_spool_registrations osr ON osr.instance_id=ii.id
                 LEFT JOIN catalog_item_attribute_values av ON av.catalog_item_id=ci.id
                 LEFT JOIN attribute_definitions ad ON ad.id=av.attribute_definition_id
                 WHERE ii.id=? GROUP BY ii.id
@@ -422,10 +426,12 @@ class InventoryQueries:
                         """
                         SELECT es.slot_number,aa.id assignment_id,ii.id spool_id,ii.permanent_id,
                           ii.remaining_quantity,m.name manufacturer,ci.variant color,
-                          mat.text_value material
+                          mat.text_value material,osr.quantity_mode,
+                          osr.remaining_quantity registered_remaining_quantity
                         FROM equipment_slots es
                         LEFT JOIN ams_assignments aa ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
                         LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+                        LEFT JOIN open_spool_registrations osr ON osr.instance_id=ii.id
                         LEFT JOIN catalog_items ci ON ci.id=ii.catalog_item_id
                         LEFT JOIN manufacturers m ON m.id=ci.manufacturer_id
                         LEFT JOIN catalog_item_attribute_values mat ON mat.catalog_item_id=ci.id

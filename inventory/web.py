@@ -24,6 +24,7 @@ from .orders import OrderReceiptError, OrderReceiptWorkflow
 from .returning import ReturnSpoolError, ReturnSpoolToStorageWorkflow
 from .actions import ActionContext
 from .production import ProductionError, ProductionService
+from .open_spool import RegisterExistingOpenSpoolWorkflow, RegisterOpenSpoolError
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -53,6 +54,7 @@ class InventoryWebApp:
         self.initialization = InitializeVerifiedAMSStateWorkflow(self.database)
         self.order_receiving = OrderReceiptWorkflow(self.database)
         self.returning = ReturnSpoolToStorageWorkflow(self.database)
+        self.open_spool = RegisterExistingOpenSpoolWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -78,6 +80,8 @@ class InventoryWebApp:
             body, status = self._return_spool_error(str(exc)), 422
         except ProductionError as exc:
             body, status = self._production_error(str(exc)), 422
+        except RegisterOpenSpoolError as exc:
+            body, status = self._open_spool_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -140,6 +144,16 @@ class InventoryWebApp:
             return self._order_receipt_complete(
                 self.order_receiving.commit(form.get("review_token", ""))
             ), 201
+        if method == "GET" and path == "/inventory/filament/register-open":
+            return self._open_spool_form(), 200
+        if method == "POST" and path == "/inventory/filament/register-open/review":
+            return self._open_spool_review(self.open_spool.review(form)), 200
+        if method == "POST" and path == "/inventory/filament/register-open/confirm":
+            if form.get("confirm") != "register-open-spool":
+                raise RegisterOpenSpoolError("explicit registration confirmation is required")
+            return self._open_spool_complete(
+                self.open_spool.commit(form.get("review_token", ""))
+            ), 201
         if method == "POST" and path == "/prints/complete":
             if form.get("confirm") != "complete-print":
                 raise ProductionError("explicit print completion confirmation is required")
@@ -183,6 +197,143 @@ class InventoryWebApp:
         if match and match.group(1) in MODULES:
             return self._placeholder(MODULES[match.group(1)]), 200
         return self._not_found(), 404
+
+    def _open_spool_form(self) -> str:
+        options = self.open_spool.options()
+        products = "".join(
+            f'<option value="{p["id"]}">{esc(p["manufacturer"])} · '
+            f'{esc(p["product_line"])} · {esc(p["color"])} ({esc(p["material"])})</option>'
+            for p in options["products"]
+        )
+        locations = "".join(
+            f'<option value="storage:{r["id"]}">Storage · {esc(r["name"])}</option>'
+            for r in options["locations"]
+        ) + "".join(
+            f'<option value="ams:{r["id"]}">{esc(r["equipment_name"])} · '
+            f'Slot {r["slot_number"]}</option>' for r in options["slots"]
+        )
+        return self._shell(
+            "Register Existing Open Spool",
+            f"""<div class="notice"><strong>Legacy inventory only</strong>
+            <p>Use this for one physical spool that was opened before THS tracking began.
+            Do not use it for a new sealed spool.</p></div>
+            <form class="receive-form" method="post"
+              action="/inventory/filament/register-open/review">
+            <fieldset><legend>1. Manufacturer, material, and color</legend>
+              <label class="choice"><input type="radio" name="product_mode"
+                value="existing" checked><span><strong>Select existing catalog product</strong></span></label>
+              <label><span>Existing product</span><select name="catalog_item_id">
+                <option value="">Select a product</option>{products}</select></label>
+              <label class="choice"><input type="radio" name="product_mode" value="new">
+                <span><strong>Create missing catalog identity</strong>
+                <small>No nominal or 1,000 g weight is required.</small></span></label>
+              <div class="form-grid">
+                <label><span>Manufacturer</span><input name="manufacturer" maxlength="120"></label>
+                <label><span>Material / type</span><input name="material" maxlength="120"></label>
+                <label><span>Color</span><input name="color" maxlength="120"></label>
+              </div>
+            </fieldset>
+            <fieldset><legend>2. Remaining quantity</legend><div class="form-grid">
+              <label><span>Quantity mode</span><select name="quantity_mode" required>
+                <option value="exact">Exact grams</option>
+                <option value="estimated">Estimated grams</option>
+                <option value="unknown">Unknown</option></select></label>
+              <label><span>Remaining grams</span><input name="remaining_quantity"
+                type="number" min="0" step="0.01" inputmode="decimal"
+                placeholder="Leave blank only when unknown"></label>
+              <label><span>Confidence / source</span><select name="quantity_confidence" required>
+                <option value="weighed">Weighed</option>
+                <option value="manufacturer_estimate">Manufacturer estimate</option>
+                <option value="visual_estimate">Visual estimate</option>
+                <option value="unknown">Unknown</option></select></label>
+              <label class="wide-field"><span>Quantity note</span>
+                <textarea name="note" maxlength="1000" rows="3"
+                placeholder="Required for estimated or unknown quantity"></textarea></label>
+            </div></fieldset>
+            <fieldset><legend>3. Physical location and duplicate check</legend>
+              <label><span>Current location</span><select name="initial_location" required>
+                <option value="">Select storage or an empty AMS slot</option>{locations}</select></label>
+              <label><span>Actor</span><input name="actor" value="Cowboy" required></label>
+              <label class="confirmation"><input type="checkbox"
+                name="physical_spool_confirmed" value="yes" required><span>I physically
+                verified this is one open spool and it is not already registered.</span></label>
+              <div class="notice warning"><strong>Duplicate warning</strong><p>Same-brand,
+                same-material, same-color spools are allowed. Check the box only after
+                confirming this is a different physical spool from any warning shown.</p></div>
+              <label class="confirmation"><input type="checkbox"
+                name="duplicate_warning_ack" value="yes"><span>I reviewed possible matching
+                open or AMS-loaded spools and this is a different physical spool.</span></label>
+            </fieldset>
+            <div class="notice subdued"><strong>Fixed by this workflow</strong>
+              <p>Condition: Open · Source: Pre-existing inventory · One permanent THS-FIL ID</p></div>
+            <div class="form-actions"><a href="/inventory/filament">Cancel</a>
+              <button type="submit">Preview registration</button></div></form>""",
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / Register open spool',
+            description="Preview first. Nothing is written until final confirmation.",
+        )
+
+    def _open_spool_review(self, review) -> str:
+        v = review.values
+        quantity = (
+            "Unknown" if v["remaining_quantity"] is None
+            else f'{v["remaining_quantity"]:g} g'
+        )
+        destination = (
+            v["destination"]["name"] if v["location_type"] == "storage"
+            else f'{v["destination"]["equipment_name"]} Slot {v["destination"]["slot_number"]}'
+        )
+        warning = (
+            f'<div class="notice warning"><strong>Duplicate warning acknowledged</strong>'
+            f'<p>{v["duplicate_warning_count"]} similar open or loaded spool(s) already exist. '
+            f'This registration is allowed because the user confirmed a distinct physical spool.</p></div>'
+            if v["duplicate_warning_count"] else
+            '<div class="notice"><strong>No matching active open spool found</strong></div>'
+        )
+        return self._shell(
+            "Review Open Spool Registration",
+            f"""{warning}<section class="panel"><dl>
+              <div><dt>Permanent ID</dt><dd>{esc(v["permanent_id"])}</dd></div>
+              <div><dt>Manufacturer</dt><dd>{esc(v["product"]["manufacturer"])}</dd></div>
+              <div><dt>Material / type</dt><dd>{esc(v["product"]["material"])}</dd></div>
+              <div><dt>Color</dt><dd>{esc(v["product"]["color"])}</dd></div>
+              <div><dt>Condition</dt><dd>Open</dd></div>
+              <div><dt>Source</dt><dd>Pre-existing inventory</dd></div>
+              <div><dt>Remaining</dt><dd>{esc(quantity)}</dd></div>
+              <div><dt>Quantity mode</dt><dd>{esc(v["quantity_mode"].title())}</dd></div>
+              <div><dt>Confidence</dt><dd>{esc(v["quantity_confidence"].replace("_", " ").title())}</dd></div>
+              <div><dt>Current location</dt><dd>{esc(destination)}</dd></div>
+              <div><dt>Note</dt><dd>{display(v["note"])}</dd></div>
+            </dl></section>
+            <form class="confirm-form" method="post"
+              action="/inventory/filament/register-open/confirm">
+              <input type="hidden" name="review_token" value="{esc(review.token)}">
+              <label class="confirmation"><input type="checkbox" name="confirm"
+                value="register-open-spool" required><span>Create exactly one permanent
+                physical spool record with this reviewed information.</span></label>
+              <div class="form-actions"><a href="/inventory/filament/register-open">
+                Go back without saving</a><button type="submit">Register open spool</button></div>
+            </form>""",
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/register-open">Register open spool</a> / Review',
+        )
+
+    def _open_spool_complete(self, result: dict) -> str:
+        return self._shell(
+            "Open Spool Registered",
+            f"""<section class="success-panel"><p class="eyebrow">Committed atomically</p>
+              <h1>{esc(result["permanent_id"])}</h1>
+              <p>One pre-existing physical spool is now permanent inventory history.</p>
+              <dl><div><dt>Registration</dt><dd>#{result["registration_id"]}</dd></div>
+              <div><dt>Inventory audit</dt><dd>#{result["add_action_id"]}</dd></div>
+              <div><dt>AMS load audit</dt><dd>{display(result["load_action_id"], "Registered in storage")}</dd></div></dl>
+              <a class="primary-link" href="/inventory/filament/spools/{result["instance_id"]}">
+                View spool</a></section>""",
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/register-open">Register open spool</a> / Complete',
+        )
+
+    def _open_spool_error(self, message: str) -> str:
+        return self._error_page(
+            "Open spool registration stopped", message, status="Nothing registered"
+        )
 
     def _production_service(self, actor: str, module="print-registry-ui"):
         return ProductionService(
@@ -435,9 +586,10 @@ class InventoryWebApp:
           <strong>Receive Pending Order</strong>
           <span>Select a delivered order and preview its verified receipt.</span>
         </a>
-        <span class="workflow-menu-future" aria-disabled="true">
-          <strong>Receive Open Spool</strong><span>Future workflow</span>
-        </span>
+        <a href="/inventory/filament/register-open">
+          <strong>Register Existing Open Spool</strong>
+          <span>Add legacy open inventory without assuming 1,000 g.</span>
+        </a>
         <span class="workflow-menu-future" aria-disabled="true">
           <strong>Inventory Adjustments</strong><span>Future · admin only</span>
         </span>
@@ -514,11 +666,12 @@ class InventoryWebApp:
               <p>Unload one active spool to verified storage without changing its remaining weight.</p>
               <strong>Start workflow →</strong></div>
             </a>
-            <article class="workflow-card future" aria-disabled="true">
+            <a class="workflow-card" href="/inventory/filament/register-open">
               <span class="workflow-number">05</span><div>
-              <h3>Receive Open Spool</h3><p>Planned controlled workflow.</p>
-              <strong>Future</strong></div>
-            </article>
+              <h3>Register Existing Open Spool</h3>
+              <p>Add one legacy open spool with exact, estimated, or unknown remaining quantity.</p>
+              <strong>Start workflow →</strong></div>
+            </a>
             <article class="workflow-card future" aria-disabled="true">
               <span class="workflow-number">06</span><div>
               <h3>Inventory Adjustments</h3><p>Planned administrator-only workflow.</p>
@@ -1402,6 +1555,19 @@ class InventoryWebApp:
         )
 
     def _spool(self, s: dict) -> str:
+        legacy_remaining = (
+            "Unknown"
+            if s.get("quantity_mode") == "unknown"
+            else (
+                f'{grams(s["registered_remaining_quantity"])} '
+                f'({s["quantity_mode"]})'
+                if s.get("quantity_mode") else grams(s["remaining_quantity"])
+            )
+        )
+        legacy_confidence = (
+            s["quantity_confidence"].replace("_", " ").title()
+            if s.get("quantity_confidence") else None
+        )
         transactions = (
             "".join(
                 f'<tr><td data-label="When">{esc(t["occurred_at"])}</td>'
@@ -1430,7 +1596,8 @@ class InventoryWebApp:
             <div><dt>State</dt><dd><span class="status {esc(s["state"])}">{esc(s["state"].title())}</span></dd></div>
             <div><dt>Location</dt><dd>{display(s["location_name"])}</dd></div>
             <div><dt>Original filament</dt><dd>{grams(s["original_quantity"])}</dd></div>
-            <div><dt>Estimated remaining</dt><dd>{grams(s["remaining_quantity"])}</dd></div>
+            <div><dt>Remaining quantity</dt><dd>{esc(legacy_remaining)}</dd></div>
+            <div><dt>Quantity confidence</dt><dd>{display(legacy_confidence)}</dd></div>
             <div><dt>Reserved</dt><dd>{grams(s["reserved_grams"])}</dd></div>
             <div><dt>Available</dt><dd>{grams(s["available_grams"])}</dd></div>
           </dl></section>
@@ -1442,6 +1609,7 @@ class InventoryWebApp:
             <div><dt>Created</dt><dd>{display(s["created_at"])}</dd></div>
             <div><dt>Updated</dt><dd>{display(s["updated_at"])}</dd></div>
             <div><dt>Notes</dt><dd>{display(s["notes"])}</dd></div>
+            <div><dt>Legacy registration note</dt><dd>{display(s.get("registration_note"))}</dd></div>
           </dl></section>
         </div>
         <section><div class="section-heading"><div><h2>Transaction history</h2>
@@ -1579,10 +1747,17 @@ class InventoryWebApp:
             slots = []
             for slot in unit["slots"]:
                 if slot["assignment_id"]:
+                    remaining = (
+                        "Unknown remaining"
+                        if slot.get("quantity_mode") == "unknown"
+                        else f'{grams(slot["registered_remaining_quantity"])} remaining'
+                        if slot.get("quantity_mode")
+                        else f'{grams(slot["remaining_quantity"])} remaining'
+                    )
                     status = f"""<a href="/inventory/filament/spools/{slot["spool_id"]}">
                       <strong>{esc(slot["permanent_id"])}</strong></a>
                       <span>{esc(slot["manufacturer"])} · {esc(slot["material"])} · {esc(slot["color"])}</span>
-                      <span>{grams(slot["remaining_quantity"])} remaining</span>"""
+                      <span>{esc(remaining)}</span>"""
                 else:
                     status = '<strong>Empty</strong><span>No verified spool assignment</span>'
                 slots.append(f'<li class="ams-slot"><span class="slot-number">Slot {slot["slot_number"]}</span>'
