@@ -106,6 +106,7 @@ class InventoryFoundationTests(unittest.TestCase):
         result = import_csv(self.db, self._csv(verified="false"), apply=True)
         self.assertEqual(result["rejected"], 1)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM catalog_items WHERE name='Imported Part'"), 0)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM import_rows WHERE status='rejected'"), 1)
 
     def test_18_import_idempotency(self):
         path = self._csv(verified="true")
@@ -253,5 +254,4 @@ class InventoryFoundationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 
