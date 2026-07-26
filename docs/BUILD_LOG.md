@@ -1,5 +1,54 @@
 # THS Command Center Build Log
 
+## 2026-07-26 — Stage 2 Maintenance Registry production checkpoint
+
+### Maintenance Registry completed
+
+- Added permanent maintenance IDs, equipment readiness, backlog views, linked print
+  records, SHA-256 photo/video evidence, replay protection, and immutable lifecycle
+  history.
+- Added controlled workflows for recording faults, creating tasks, waiting for parts,
+  completing work, verifying repairs, and reopening failed repairs.
+- Added explicit Pending and In progress initial states to Record Fault Discovered.
+- Applied migration `012_maintenance_registry.sql` to the live runtime database after a
+  verified timestamped backup. Existing inventory, AMS, transaction, audit, print, and
+  open-spool registration content remained unchanged.
+
+### First signed production maintenance record
+
+- Committed `THS-MNT-000001` for the Bambu Lab P1S purge-chute sweeper failure.
+- Linked the fault to `THS-PRT-000001`, the Tweety orange-hat print accepted with defect.
+- Recorded the corrected diagnosis: the sliding purge-chute sweeper detached; the nozzle
+  wiper was initially suspected but was not the failed part.
+- Recorded the temporary sweeper reattachment, ordered replacement purge chute, spare
+  nozzle wiper, and No unattended printing readiness.
+- Registered the original Bambu Lab order screenshot as immutable evidence ID `1` using
+  SHA-256, without transcribing its shipping address or phone number into maintenance
+  notes.
+- Verified database integrity and confirmed maintenance history and evidence cannot be
+  silently updated or deleted.
+
+### Dashboard and launcher hardening
+
+- Added canonical AMS swatches for Red (`#d32f2f`) and Jade White (`#f4f4f0`) while
+  preserving Black (`#24262a`) and Orange (`#ff7a18`).
+- Found an untracked older THS process occupying port 8787 and causing current launcher
+  checks to accept stale pages.
+- Added an isolated checkout-relative Python bootstrap, exact application-path
+  verification, startup path diagnostics, occupied-port rejection, and listener-PID
+  verification.
+- Verified the permanent launcher serves the current dashboard, maintenance workflow,
+  and AMS routes from the permanent Git checkout.
+
+### Verified checkpoint
+
+- Source branch: `feature/filament-manager-v1`
+- Maintenance Registry implementation: `36e4e87`
+- Maintenance/launcher/swatch hardening: `a6a3f15`
+- Full suite: 199 tests passing
+- Live runtime data, backups, process records, screenshots, and immutable evidence remain
+  outside Git.
+
 ## 2026-07-12 — Maeve Briefing System v1.0
 
 ### Project context

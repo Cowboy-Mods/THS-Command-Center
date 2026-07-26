@@ -40,6 +40,8 @@ Features
 - [Read-only dashboard v1](docs/inventory-system/READ_ONLY_DASHBOARD_V1.md)
 - [Print Registry and Stage 2 safety checkpoint](docs/inventory-system/PRINT_REGISTRY_CHECKPOINT.md)
 - [Register Existing Open Spool](docs/inventory-system/REGISTER_EXISTING_OPEN_SPOOL.md)
+- [Printer Maintenance Registry and Backlog](docs/inventory-system/MAINTENANCE_REGISTRY.md)
+- [Runtime data, backups, and Git safety boundary](docs/inventory-system/RUNTIME_DATA_AND_BACKUPS.md)
 - [Original Maeve Filament Manager plan](docs/filament-manager/MAEVE_FILAMENT_MANAGER_V1.md)
 
 ## Run the local inventory dashboard

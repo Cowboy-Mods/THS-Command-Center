@@ -66,6 +66,11 @@ db.sqlite3-journal
 *.sqlite3-wal
 /var/
 
+# Runtime databases, backups, and immutable production evidence stay outside Git.
+/backups/
+/screenshots/
+/evidence/
+
 # Flask stuff:
 instance/
 .webassets-cache
