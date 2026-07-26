@@ -37,12 +37,26 @@ def import_csv(
             tracking = row.get("tracking_method", "")
             if tracking not in {"quantity", "individual", "lot"}:
                 errors.append("invalid tracking_method")
+            configured_type = db.execute(
+                "SELECT id,tracking_method FROM item_types WHERE name=?", (row.get("item_type"),)
+            ).fetchone()
+            if configured_type and configured_type["tracking_method"] != tracking:
+                errors.append(
+                    f"tracking policy conflicts with configured item type "
+                    f"({configured_type['tracking_method']})"
+                )
             try:
                 quantity = float(row.get("quantity") or 0)
                 count = int(row.get("instance_count") or 0)
                 remaining = float(row.get("remaining_quantity") or quantity)
                 if min(quantity, count, remaining) < 0:
                     errors.append("quantities cannot be negative")
+                if tracking == "individual" and count < 1:
+                    errors.append("individual tracking requires instance_count of at least 1")
+                if tracking in {"quantity", "lot"} and count != 0:
+                    errors.append(f"{tracking} tracking cannot create individual instances")
+                if remaining > quantity:
+                    errors.append("remaining quantity cannot exceed starting quantity")
             except ValueError:
                 errors.append("invalid numeric value")
                 quantity = remaining = 0
@@ -79,7 +93,9 @@ def import_csv(
                     ).lastrowid
                 else:
                     category_id = category["id"]
-                item_type = db.execute("SELECT id FROM item_types WHERE name=?", (row["item_type"],)).fetchone()
+                item_type = db.execute(
+                    "SELECT id,tracking_method FROM item_types WHERE name=?", (row["item_type"],)
+                ).fetchone()
                 if not item_type:
                     item_type_id = db.execute(
                         "INSERT INTO item_types(category_id,name,tracking_method,default_unit_id) VALUES (?,?,?,?)",
@@ -113,8 +129,17 @@ def import_csv(
                         )
                 else:
                     db.execute(
-                        "INSERT INTO stock_lots(catalog_item_id,location_id,quantity,unit_id,verified) VALUES (?,?,?,?,1)",
-                        (product_id, location["id"], quantity, unit["id"]),
+                        "INSERT INTO stock_lots(catalog_item_id,location_id,lot_number,quantity,unit_id,"
+                        "condition,expires_at,verified) VALUES (?,?,?,?,?,?,?,1)",
+                        (
+                            product_id,
+                            location["id"],
+                            row.get("lot_number") or None,
+                            quantity,
+                            unit["id"],
+                            row.get("condition") or "new",
+                            row.get("expiration_date") or None,
+                        ),
                     )
         if rejected:
             db.execute("ROLLBACK TO inventory_import")
