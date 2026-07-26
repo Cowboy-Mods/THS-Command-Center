@@ -61,3 +61,5 @@ The first visible Filament Inventory interface is complete. It reads the migrate
 
 No inventory-changing controls or routes exist. Setup, startup, responsive behavior, routes, and current limitations are documented in [Read-Only Dashboard v1](READ_ONLY_DASHBOARD_V1.md).
 
+Future filament mutations must use the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). It already supports receiving individual spools, moves, corrections, state changes, reservations, AMS load/unload, immutable before/after auditing, and supported reversals. No editable filament UI is exposed yet.
+
