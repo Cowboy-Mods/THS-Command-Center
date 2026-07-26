@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .db import DEFAULT_DB, connect, migrate
 from .importer import import_csv
+from .web import serve
 
 
 def main() -> None:
@@ -16,7 +17,13 @@ def main() -> None:
     imp.add_argument("csv", type=Path)
     imp.add_argument("--apply", action="store_true", help="Commit valid rows (default is dry-run)")
     imp.add_argument("--allow-unverified", action="store_true")
+    web = sub.add_parser("serve", help="Start the read-only local inventory dashboard")
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
+    if args.command == "serve":
+        serve(args.database, args.host, args.port)
+        return
     db = connect(args.database)
     migrate(db)
     if args.command == "migrate":
@@ -32,5 +39,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 
