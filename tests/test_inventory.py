@@ -194,17 +194,136 @@ class InventoryFoundationTests(unittest.TestCase):
                         "VALUES (?,?,500,(SELECT id FROM units WHERE code='g'))", (project,product))
         self.assertEqual(project_material_status(self.db, project)[0]["status"], "available")
 
-    def test_38_quantity_and_individual_items_in_bom(self):
+    def test_38_all_tracking_policies_participate_in_bom(self):
         bulk = self._product("M5 Screws", "quantity", "ea")
         self.db.execute("INSERT INTO stock_lots(catalog_item_id,location_id,quantity,unit_id,verified) "
                         "VALUES (?,?,10,(SELECT id FROM units WHERE code='ea'),1)", (bulk,self._workshop()))
+        lot = self._product("Casting Resin", "lot", "ml")
+        self.db.execute("INSERT INTO stock_lots(catalog_item_id,location_id,lot_number,quantity,unit_id,"
+                        "condition,expires_at,verified) VALUES (?,?,?,750,"
+                        "(SELECT id FROM units WHERE code='ml'),'opened','2027-01-01',1)",
+                        (lot,self._workshop(),"RESIN-LOT-1"))
         project = self.db.execute("INSERT INTO projects(name) VALUES ('Mixed Build')").lastrowid
         filament = self.scalar("SELECT catalog_item_id FROM inventory_instances LIMIT 1")
         self.db.execute("INSERT INTO project_requirements(project_id,catalog_item_id,quantity,unit_id) "
                         "VALUES (?,?,100,(SELECT id FROM units WHERE code='g'))", (project,filament))
         self.db.execute("INSERT INTO project_requirements(project_id,catalog_item_id,quantity,unit_id) "
                         "VALUES (?,?,4,(SELECT id FROM units WHERE code='ea'))", (project,bulk))
-        self.assertEqual([r["status"] for r in project_material_status(self.db,project)], ["available","available"])
+        self.db.execute("INSERT INTO project_requirements(project_id,catalog_item_id,quantity,unit_id) "
+                        "VALUES (?,?,250,(SELECT id FROM units WHERE code='ml'))", (project,lot))
+        self.assertEqual(
+            [r["status"] for r in project_material_status(self.db,project)],
+            ["available","available","available"],
+        )
+
+    def test_39_tracking_policy_allowed_values_are_database_validated(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "INSERT INTO item_types(category_id,name,tracking_method,default_unit_id) "
+                "VALUES ((SELECT id FROM categories WHERE name='Hardware'),'Invalid','guess',"
+                "(SELECT id FROM units WHERE code='ea'))"
+            )
+
+    def test_40_quantity_policy_rejects_instances_without_override(self):
+        product = self._product("Bulk Connectors", "quantity", "ea")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "tracking policy"):
+            self.db.execute(
+                "INSERT INTO inventory_instances(catalog_item_id,state,location_id,original_quantity,"
+                "remaining_quantity,unit_id) VALUES (?,'open',?,1,1,"
+                "(SELECT id FROM units WHERE code='ea'))",
+                (product,self._workshop()),
+            )
+        self.db.execute(
+            "INSERT INTO inventory_instances(catalog_item_id,state,location_id,original_quantity,"
+            "remaining_quantity,unit_id,tracking_policy_override) VALUES (?,'open',?,1,1,"
+            "(SELECT id FROM units WHERE code='ea'),1)",
+            (product,self._workshop()),
+        )
+
+    def test_41_individual_policy_rejects_anonymous_stock_without_override(self):
+        filament = self.scalar("SELECT catalog_item_id FROM inventory_instances LIMIT 1")
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "requires individual"):
+            self.db.execute(
+                "INSERT INTO stock_lots(catalog_item_id,location_id,quantity,unit_id) "
+                "VALUES (?,?,1000,(SELECT id FROM units WHERE code='g'))",
+                (filament,self._workshop()),
+            )
+        self.db.execute(
+            "INSERT INTO stock_lots(catalog_item_id,location_id,quantity,unit_id,"
+            "tracking_policy_override) VALUES (?,?,1000,(SELECT id FROM units WHERE code='g'),1)",
+            (filament,self._workshop()),
+        )
+
+    def test_42_lot_policy_supports_partial_batch_condition_and_expiration(self):
+        product = self._product("Shop Adhesive", "lot", "ml")
+        lot_id = self.db.execute(
+            "INSERT INTO stock_lots(catalog_item_id,location_id,lot_number,quantity,unit_id,"
+            "condition,expires_at,verified) VALUES (?,?,?,125.5,"
+            "(SELECT id FROM units WHERE code='ml'),'opened','2026-12-31',1)",
+            (product,self._workshop(),"ADH-2026-07"),
+        ).lastrowid
+        row = self.db.execute(
+            "SELECT lot_number,quantity,condition,expires_at FROM stock_lots WHERE id=?", (lot_id,)
+        ).fetchone()
+        self.assertEqual(tuple(row), ("ADH-2026-07",125.5,"opened","2026-12-31"))
+
+    def test_43_item_type_policy_change_rejects_conflicting_stock(self):
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "existing inventory conflicts"):
+            self.db.execute(
+                "UPDATE item_types SET tracking_method='quantity' WHERE name='Filament'"
+            )
+
+    def test_44_import_rejects_configured_policy_conflict(self):
+        result = import_csv(
+            self.db,
+            self._csv(
+                verified="true",
+                external_id="POLICY-CONFLICT",
+                item_type="Filament",
+                tracking="quantity",
+                count="0",
+                unit="g",
+            ),
+            apply=True,
+        )
+        self.assertEqual(result["rejected"], 1)
+        self.assertIn(
+            "tracking policy conflicts",
+            self.scalar("SELECT message FROM import_rows WHERE external_id='POLICY-CONFLICT'"),
+        )
+
+    def test_45_import_respects_individual_quantity_and_lot_policies(self):
+        individual = self._csv(
+            verified="true", external_id="IMP-IND", item_type="Imported Asset",
+            tracking="individual", count="2", quantity="1", remaining="1"
+        )
+        quantity = self._csv(
+            verified="true", external_id="IMP-QTY", item_type="Imported Bulk",
+            tracking="quantity", count="0", quantity="12", remaining="12"
+        )
+        lot = self._csv(
+            verified="true", external_id="IMP-LOT", item_type="Imported Lot",
+            tracking="lot", count="0", quantity="4.5", remaining="4.5",
+            lot_number="LOT-45", condition="opened", expiration_date="2027-02-01"
+        )
+        for path in (individual,quantity,lot):
+            self.assertEqual(import_csv(self.db,path,apply=True)["rejected"], 0)
+        self.assertEqual(
+            self.scalar(
+                "SELECT COUNT(*) FROM inventory_instances ii JOIN catalog_items ci "
+                "ON ci.id=ii.catalog_item_id JOIN item_types it ON it.id=ci.item_type_id "
+                "WHERE it.name='Imported Asset'"
+            ),
+            2,
+        )
+        self.assertEqual(
+            tuple(self.db.execute(
+                "SELECT sl.quantity,sl.lot_number,sl.condition,sl.expires_at FROM stock_lots sl "
+                "JOIN catalog_items ci ON ci.id=sl.catalog_item_id JOIN item_types it "
+                "ON it.id=ci.item_type_id WHERE it.name='Imported Lot'"
+            ).fetchone()),
+            (4.5,"LOT-45","opened","2027-02-01"),
+        )
 
     def _workshop(self):
         return self._location("Workshop")
@@ -236,19 +355,24 @@ class InventoryFoundationTests(unittest.TestCase):
         return self.db.execute("INSERT INTO catalog_items(item_type_id,name,base_unit_id) VALUES (?,?,"
             "(SELECT id FROM units WHERE code=?))", (item_type_id,name,unit)).lastrowid
 
-    def _csv(self, verified="true", external_id="TEST-001"):
+    def _csv(
+        self, verified="true", external_id="TEST-001", item_type="Imported Parts",
+        tracking="quantity", count="0", quantity="5", remaining="5", unit="ea",
+        lot_number="", condition="new", expiration_date=""
+    ):
         path = Path(self.temp.name) / f"{external_id}-{verified}.csv"
         fields = ["category","item_type","manufacturer","product_name","product_line","variant","unit",
-                  "tracking_method","quantity","instance_count","state","location","remaining_quantity",
-                  "notes","verified_status","external_id"]
+                  "tracking_method","quantity","instance_count","state","location","lot_number",
+                  "condition","expiration_date","remaining_quantity","notes","verified_status","external_id"]
         with path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fields)
             writer.writeheader()
-            writer.writerow({"category":"Hardware","item_type":"Imported Parts","manufacturer":"Test Maker",
+            writer.writerow({"category":"Hardware","item_type":item_type,"manufacturer":"Test Maker",
                 "product_name":"Imported Part","product_line":"","variant":"","unit":"ea",
-                "tracking_method":"quantity","quantity":"5","instance_count":"0","state":"new",
-                "location":"Workshop","remaining_quantity":"5","notes":"","verified_status":verified,
-                "external_id":external_id})
+                "tracking_method":tracking,"quantity":quantity,"instance_count":count,"state":"open",
+                "location":"Workshop","lot_number":lot_number,"condition":condition,
+                "expiration_date":expiration_date,"remaining_quantity":remaining,"notes":"",
+                "verified_status":verified,"external_id":external_id,"unit":unit})
         return path
 
 
