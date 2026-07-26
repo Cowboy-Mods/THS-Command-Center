@@ -2,7 +2,8 @@
 setlocal
 title Start THS Dashboard
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ths-dashboard.ps1" -Action start
+set "THS_DATABASE=%USERPROFILE%\Documents\THS-Command-Center-Data\inventory.sqlite3"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\ths-dashboard.ps1" -Action start -DatabasePath "%THS_DATABASE%"
 set "THS_EXIT=%ERRORLEVEL%"
 
 echo.

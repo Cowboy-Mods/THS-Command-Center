@@ -2,13 +2,17 @@
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet("start", "stop", "status")]
-    [string]$Action
+    [string]$Action,
+
+    [Parameter(Mandatory = $true)]
+    [string]$DatabasePath
 )
 
 $ErrorActionPreference = "Stop"
 $projectPath = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$varPath = Join-Path $projectPath "var"
-$pidFile = Join-Path $varPath "ths-dashboard.json"
+$databasePath = [System.IO.Path]::GetFullPath($DatabasePath)
+$runtimePath = Join-Path (Split-Path -Parent $databasePath) "runtime"
+$pidFile = Join-Path $runtimePath "ths-dashboard.json"
 $dashboardUrl = "http://127.0.0.1:8787"
 
 function Get-THSPython {
@@ -71,7 +75,10 @@ function Get-VerifiedTHSProcess {
     $sameProject = (
         [System.IO.Path]::GetFullPath([string]$Record.ProjectPath) -eq $projectPath
     )
-    if (-not ($sameExecutable -and $sameStart -and $sameProject)) {
+    $sameDatabase = (
+        [System.IO.Path]::GetFullPath([string]$Record.DatabasePath) -eq $databasePath
+    )
+    if (-not ($sameExecutable -and $sameStart -and $sameProject -and $sameDatabase)) {
         throw "Safety check failed: the recorded PID is not the exact THS Dashboard process."
     }
     return $process
@@ -119,20 +126,23 @@ if ($Action -eq "stop") {
     exit 0
 }
 
-New-Item -ItemType Directory -Path $varPath -Force | Out-Null
+if (-not (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
+    throw "THS Inventory database was not found: $databasePath"
+}
+New-Item -ItemType Directory -Path $runtimePath -Force | Out-Null
 Remove-StaleTHSRecord
 $python = Get-THSPython
 
 Push-Location $projectPath
 try {
     Write-Host "Preparing the THS Inventory database..."
-    & $python.FilePath @($python.PrefixArguments) -m inventory.cli migrate
+    & $python.FilePath @($python.PrefixArguments) -m inventory.cli --database $databasePath migrate
     if ($LASTEXITCODE -ne 0) {
         throw "Database migration failed with exit code $LASTEXITCODE."
     }
 
     $serverArguments = @($python.PrefixArguments) +
-        @("-m", "inventory.cli", "serve", "--host", "127.0.0.1", "--port", "8787")
+        @("-m", "inventory.cli", "--database", $databasePath, "serve", "--host", "127.0.0.1", "--port", "8787")
     $server = Start-Process -FilePath $python.FilePath -ArgumentList $serverArguments `
         -WorkingDirectory $projectPath -NoNewWindow -PassThru
     $record = [ordered]@{
@@ -140,6 +150,7 @@ try {
         StartTimeUtcFileTime = $server.StartTime.ToFileTimeUtc()
         ExecutablePath = $server.Path
         ProjectPath = $projectPath
+        DatabasePath = $databasePath
         Url = $dashboardUrl
     }
     $record | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8

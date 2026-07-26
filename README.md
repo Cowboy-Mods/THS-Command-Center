@@ -42,13 +42,16 @@ Features
 
 ## Run the local inventory dashboard
 
-On Windows, double-click `Start THS Dashboard.cmd` in the permanent checkout. The launcher derives the repository path from its own location, migrates the database, opens the dashboard, and records the exact server process. Double-click `Stop THS Dashboard.cmd` to stop only that verified process.
+On Windows, double-click `Start THS Dashboard.cmd` in the permanent checkout. The launcher runs the source code from that Git checkout, explicitly opens `C:\Users\<you>\Documents\THS-Command-Center-Data\inventory.sqlite3`, migrates it, opens the dashboard, and records the exact server process outside Git. Double-click `Stop THS Dashboard.cmd` to stop only that verified process.
+
+Live data and backups do not belong in a Git checkout. See [Runtime data and backups](docs/inventory-system/RUNTIME_DATA_AND_BACKUPS.md) before relocating, restoring, or backing up the database.
 
 The command-line equivalent is:
 
 ```powershell
-py -3 -m inventory.cli migrate
-py -3 -m inventory.cli serve
+$database = "$env:USERPROFILE\Documents\THS-Command-Center-Data\inventory.sqlite3"
+py -3 -m inventory.cli --database $database migrate
+py -3 -m inventory.cli --database $database serve
 ```
 
 Open [http://127.0.0.1:8787](http://127.0.0.1:8787) in a browser.
