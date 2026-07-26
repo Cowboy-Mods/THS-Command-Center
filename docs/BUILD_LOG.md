@@ -142,3 +142,11 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Added migration 014 dry-run protection for all legacy and Phase 1 purchase data.
 - Did not create the Bambu purchase, process the Overture receipt, or migrate
   production.
+
+## 2026-07-26 — Cyan/Cayenne AMS swatch correction
+
+- Added the canonical Bambu PLA Basic Cyan swatch (`#0086d6`) and accepted
+  `Cayenne` as the shop-facing alias for the same registered color.
+- Normalized swatch lookup case and surrounding/repeated whitespace while
+  preserving the unknown-color fallback.
+- Made no inventory or production database changes.

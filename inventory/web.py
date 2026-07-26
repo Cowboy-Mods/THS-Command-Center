@@ -1025,13 +1025,15 @@ class InventoryWebApp:
 
     @staticmethod
     def _swatch(color) -> str:
+        normalized = " ".join(str(color or "").strip().lower().split())
         return {
             "white": "#f4f4f0", "jade white": "#f4f4f0",
             "orange": "#ff7a18", "red": "#d32f2f", "black": "#24262a",
+            "cyan": "#0086d6", "cayenne": "#0086d6",
             "blue": "#2878d0", "cobalt blue": "#2454a6", "brown": "#79533a",
             "gray": "#8a9098", "dark gray": "#4b5057", "pink": "#ef8cab",
             "gold": "#d5a72e", "turquoise": "#27b8b2", "bambu green": "#00ae42",
-        }.get(str(color or "").lower(), "#777d86")
+        }.get(normalized, "#777d86")
 
     def _filament_inventory(self, query: dict[str, list[str]]) -> str:
         get = lambda key: query.get(key, [""])[0]
