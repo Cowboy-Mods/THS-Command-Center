@@ -146,8 +146,8 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 
 ## Next milestones
 
-1. Review the completed Receive a Verified Sealed Spool workflow.
-2. Implement Open Existing Sealed Spool for one selected Bambu Lab PLA Basic Orange `THS-FIL` ID, leaving the second Orange spool sealed.
+1. Perform and review the first live Replace Active Filament Spool operation.
+2. Confirm the selected Orange permanent IDs and AMS slot immediately before the Tweety Bird THS-hat replacement.
 3. Verify open-wall colors, grams, and rack positions through a staged import.
 4. Add remaining consume/reconcile/project-completion service methods before exposing those actions.
 5. Add project allocation and completion services, then optional Bambu integration.
