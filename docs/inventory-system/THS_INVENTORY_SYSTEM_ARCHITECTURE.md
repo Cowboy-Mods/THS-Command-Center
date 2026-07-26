@@ -24,6 +24,8 @@ The first visible interface uses Python's standard-library HTTP server, server-r
 
 `inventory/queries.py` opens SQLite using read-only mode and provides reusable dashboard, grouped-product, product-detail, spool-detail, transaction-history, AMS, search, filter, and reorder queries. `inventory/navigation.py` defines module labels and routes as metadata so future user profiles can hide, rename, add, or reorganize modules.
 
+The Dashboard is the human-facing navigation contract for controlled inventory actions. Available workflows appear as labeled launch cards on the Dashboard and in the global **Controlled workflows** menu; route paths remain internal implementation details. Future workflows are displayed only as disabled roadmap items until their service boundary, validation, confirmation, audit, and tests exist.
+
 Functional routes are Dashboard, Filament Inventory, Filament Product Detail, Individual Spool Detail, and AMS Units. All other planned modules display an honest Coming Soon page. See [Read-Only Dashboard v1](READ_ONLY_DASHBOARD_V1.md) for startup, route, responsive, and testing details.
 
 ## Extensible core
