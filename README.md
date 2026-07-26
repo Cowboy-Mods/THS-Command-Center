@@ -26,6 +26,7 @@ Features
 ## THS Inventory System
 
 - [Extensible inventory architecture](docs/inventory-system/THS_INVENTORY_SYSTEM_ARCHITECTURE.md)
+- [Centralized Inventory Action Service](docs/inventory-system/INVENTORY_ACTION_SERVICE.md)
 - [Filament Inventory module v1](docs/inventory-system/FILAMENT_MODULE_V1.md)
 - [Read-only dashboard v1](docs/inventory-system/READ_ONLY_DASHBOARD_V1.md)
 - [Original Maeve Filament Manager plan](docs/filament-manager/MAEVE_FILAMENT_MANAGER_V1.md)
