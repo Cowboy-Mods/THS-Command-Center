@@ -63,5 +63,7 @@ The original browsing routes remain read-only. One narrow confirmed workflow now
 
 No existing inventory can be edited. Quantity corrections, AMS editing, and broad product management remain unexposed. Future filament mutations must use the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md).
 
-The next checkpoint is **Open Existing Sealed Spool**. It should open one specific existing Bambu Lab PLA Basic Orange `THS-FIL` spool for the modified Tweety Bird hat project while leaving the second Orange spool sealed.
+The first composite shop workflow is now [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md). It empties the loaded outgoing spool, opens one selected sealed replacement, and loads it into the same or another validated AMS slot with three child audits under one immutable parent workflow transaction.
+
+Verified scenarios cover the completed White-to-Bambu-Jade-White change and the upcoming Orange-to-Orange change for the modified Tweety Bird THS hat. No product or color is hard-coded into the workflow.
 
