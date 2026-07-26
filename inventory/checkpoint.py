@@ -34,6 +34,10 @@ PURCHASE_PHASE2A_PROTECTED_TABLES = PURCHASE_PROTECTED_TABLES + (
     "purchase_vendors", "purchase_categories", "purchase_orders",
     "purchase_order_lines", "purchase_history",
 )
+RECEIVING_HARDENING_PROTECTED_TABLES = PURCHASE_PHASE2A_PROTECTED_TABLES + (
+    "purchase_evidence", "purchase_maintenance_links",
+    "order_delivery_evidence", "order_delivery_evidence_history",
+)
 
 
 class CheckpointError(RuntimeError):
@@ -87,6 +91,22 @@ def table_fingerprint(db: sqlite3.Connection, table: str) -> dict:
         list(row) for row in db.execute(f"SELECT * FROM {quoted} ORDER BY rowid")
     ]
     body = json.dumps(rows, sort_keys=True, separators=(",", ":"), default=str).encode()
+    return {"count": len(rows), "sha256": hashlib.sha256(body).hexdigest()}
+
+
+def table_fingerprint_columns(
+    db: sqlite3.Connection, table: str, excluded: set[str] | None = None,
+) -> dict:
+    excluded = excluded or set()
+    columns = [
+        row[1] for row in db.execute(f'PRAGMA table_info("{table}")')
+        if row[1] not in excluded
+    ]
+    quoted = ",".join('"' + name.replace('"', '""') + '"' for name in columns)
+    rows = [list(row) for row in db.execute(
+        f'SELECT {quoted} FROM "{table}" ORDER BY rowid'
+    )]
+    body = json.dumps(rows, separators=(",", ":"), default=str).encode()
     return {"count": len(rows), "sha256": hashlib.sha256(body).hexdigest()}
 
 
@@ -218,6 +238,67 @@ def purchase_phase2a_dry_run(database: Path) -> dict:
             "before": before, "applied": applied,
             "migration_count": migration_count, "integrity": integrity,
             "protected": protected_after, "new_table_counts": counts,
+        }
+
+
+def receiving_hardening_dry_run(database: Path) -> dict:
+    """Verify migration 016 on a copy without changing production row content."""
+    before = verify_database(database)
+    with closing(readonly(database)) as db:
+        protected_before = {
+            table: table_fingerprint(db, table)
+            for table in RECEIVING_HARDENING_PROTECTED_TABLES
+            if table not in {"orders", "receiving_batches"}
+        }
+        order_before = table_fingerprint(db, "orders")
+        batch_before = table_fingerprint(db, "receiving_batches")
+    with tempfile.TemporaryDirectory(prefix="ths-receiving-hardening-") as folder:
+        candidate = Path(folder) / database.name
+        shutil.copy2(database, candidate)
+        if sha256(candidate) != before["sha256"]:
+            raise CheckpointError("receiving-hardening copy hash does not match source")
+        db = connect(candidate)
+        try:
+            applied = migrate(db)
+            applied_again = migrate(db)
+        finally:
+            db.close()
+        if any(name != "016_legacy_order_receiving_hardening.sql" for name in applied):
+            raise CheckpointError("unexpected pending migration in receiving checkpoint")
+        with closing(readonly(candidate)) as db:
+            protected_after = {
+                table: table_fingerprint(db, table)
+                for table in RECEIVING_HARDENING_PROTECTED_TABLES
+                if table not in {"orders", "receiving_batches"}
+            }
+            order_after = table_fingerprint_columns(db, "orders", {
+                    "physical_received_date", "physical_received_time",
+                    "receipt_time_precision",
+                })
+            batch_after = table_fingerprint_columns(db, "receiving_batches", {
+                "physical_receipt_date", "physical_receipt_time",
+                "receipt_time_precision", "recorded_at",
+            })
+            new_counts = {
+                table: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in ("catalog_item_history", "receiving_batch_delivery_evidence")
+            }
+            integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
+            foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
+            migration_count = db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
+        if protected_before != protected_after or order_before != order_after:
+            raise CheckpointError("receiving hardening changed protected row content")
+        if batch_before != batch_after or any(new_counts.values()):
+            raise CheckpointError("receiving hardening created production records")
+        if integrity != "ok" or foreign_keys:
+            raise CheckpointError("receiving-hardening integrity verification failed")
+        if applied and migration_count != before["migrations"] + 1:
+            raise CheckpointError("receiving hardening did not advance exactly one version")
+        return {
+            "before": before, "applied": applied, "applied_again": applied_again,
+            "migration_count": migration_count, "integrity": integrity,
+            "foreign_key_violations": len(foreign_keys),
+            "protected": protected_after, "new_table_counts": new_counts,
         }
 
 

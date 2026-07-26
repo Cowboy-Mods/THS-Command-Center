@@ -82,13 +82,22 @@ class LegacyOrderDeliveryEvidenceTests(unittest.TestCase):
             db.close()
         finally:
             db_module.MIGRATIONS = migrations
-        db = connect(old)
-        first = migrate(db)
-        after = tuple(db.execute(
-            "SELECT * FROM orders WHERE order_number='THS-ORD-000001'"
-        ).fetchone())
-        second = migrate(db)
-        db.close()
+        through015 = self.root / "through015"
+        through015.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name <= "015_legacy_order_delivery_evidence.sql":
+                (through015 / source.name).write_bytes(source.read_bytes())
+        db_module.MIGRATIONS = through015
+        try:
+            db = connect(old)
+            first = migrate(db)
+            after = tuple(db.execute(
+                "SELECT * FROM orders WHERE order_number='THS-ORD-000001'"
+            ).fetchone())
+            second = migrate(db)
+            db.close()
+        finally:
+            db_module.MIGRATIONS = migrations
         self.assertEqual(first, ["015_legacy_order_delivery_evidence.sql"])
         self.assertEqual(second, [])
         self.assertEqual(before, after)

@@ -168,3 +168,17 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   order details.
 - Kept delivery proof separate from receipt, inventory, installation, and
   consumption. No production evidence or receiving data was written.
+
+## 2026-07-26 — Legacy order receiving hardening
+
+- Added additive migration `016_legacy_order_receiving_hardening.sql` with
+  separate physical receipt facts and system-recorded commit time.
+- Added signed, expiring, audited in-place catalog correction with immutable
+  history and a refill-coil form attribute.
+- Added immutable same-order batch/evidence links with commit-time external-file
+  SHA-256 and size revalidation.
+- Enforced exact full-outstanding receiving; partial receipt remains a separate
+  future workflow.
+- Bound the batch UUID, THS-FIL IDs, evidence snapshots, and link UUIDs into the
+  zero-write signed preview and atomic commit.
+- Made no production database, catalog, order, evidence, or inventory changes.

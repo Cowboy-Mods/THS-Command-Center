@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import hashlib
+import uuid
 from pathlib import Path
 
 from inventory.actions import ActionContext, InventoryActionError, InventoryActionService
@@ -20,6 +22,18 @@ class OrdersAndPrinterFoundationTests(unittest.TestCase):
         self.location_id = db.execute(
             "SELECT id FROM locations WHERE name='Sealed Filament Rack'"
         ).fetchone()[0]
+        self.evidence_file = Path(self.temp.name) / "arrival.jpg"
+        self.evidence_file.write_bytes(b"verified Overture delivery")
+        digest = hashlib.sha256(self.evidence_file.read_bytes()).hexdigest()
+        self.evidence_uuid = str(uuid.uuid4())
+        db.execute(
+            """INSERT INTO order_delivery_evidence(
+            evidence_uuid,order_id,evidence_scope,evidence_type,file_path,sha256,
+            file_size,caption,actor,request_nonce) VALUES (?,?, 'delivery','photo',?,?,?,?,?,?)""",
+            (self.evidence_uuid, self.order_id, str(self.evidence_file), digest,
+             self.evidence_file.stat().st_size, "Arrival", "Cowboy", uuid.uuid4().hex),
+        )
+        db.commit()
         db.close()
         self.app = InventoryWebApp(self.database)
 
@@ -32,6 +46,10 @@ class OrdersAndPrinterFoundationTests(unittest.TestCase):
             "condition": "new", "location_id": str(self.location_id),
             "actor": "Cowboy", "reason": "Verified delivered refills",
             "note": "Box and refill rolls inspected", "physically_verified": "yes",
+            "physical_receipt_date": "2026-07-26",
+            "physical_receipt_time": "",
+            "receipt_time_precision": "date_only",
+            "evidence_uuids": self.evidence_uuid,
         }
         values.update(changes)
         return values
@@ -126,24 +144,13 @@ class OrdersAndPrinterFoundationTests(unittest.TestCase):
                         (self.order_id,)), 4,
         )
 
-    def test_06_partial_receipt_keeps_order_delivered_and_remaining_open(self):
-        result = self.app.order_receiving.commit(
-            self.app.order_receiving.review(self.form("2")).token
-        )
-        self.assertEqual((result["state"], result["remaining_quantity"]), ("delivered", 2))
-        order = self.row("SELECT state,received_quantity FROM orders WHERE id=?", (self.order_id,))
-        self.assertEqual((order["state"], order["received_quantity"]), ("delivered", 2))
+    def test_06_under_receipt_is_rejected(self):
+        with self.assertRaisesRegex(OrderReceiptError, "outstanding quantity"):
+            self.app.order_receiving.review(self.form("2"))
 
-    def test_07_two_partial_batches_complete_the_order(self):
-        first = self.app.order_receiving.commit(
-            self.app.order_receiving.review(self.form("2")).token
-        )
-        second = self.app.order_receiving.commit(
-            self.app.order_receiving.review(self.form("2")).token
-        )
-        self.assertNotEqual(first["batch_id"], second["batch_id"])
-        self.assertEqual(second["state"], "received")
-        self.assertEqual(self.scalar("SELECT COUNT(*) FROM receiving_batches"), 2)
+    def test_07_over_receipt_is_rejected(self):
+        with self.assertRaisesRegex(OrderReceiptError, "outstanding quantity"):
+            self.app.order_receiving.review(self.form("5"))
 
     def test_08_receipt_is_atomic_when_instance_linkage_fails(self):
         db = connect(self.database)
@@ -204,7 +211,7 @@ class OrdersAndPrinterFoundationTests(unittest.TestCase):
 
     def test_13_recent_activity_shows_useful_immutable_actions(self):
         self.app.order_receiving.commit(
-            self.app.order_receiving.review(self.form("1")).token
+            self.app.order_receiving.review(self.form()).token
         )
         page = self.app.response("/")[2].decode()
         self.assertIn("Order receipt committed", page)

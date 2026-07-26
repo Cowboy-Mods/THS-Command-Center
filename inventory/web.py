@@ -1951,6 +1951,14 @@ class InventoryWebApp:
               <option value="new">New</option><option value="good">Good</option>
               <option value="damaged">Damaged</option></select></label>
             <label><span>Receiving location</span><select name="location_id" required>{locations}</select></label>
+            <label><span>Physical receipt date</span><input type="date"
+              name="physical_receipt_date" required></label>
+            <label><span>Receipt-time precision</span><select name="receipt_time_precision" required>
+              <option value="date_only">Date known, time unknown</option>
+              <option value="exact">Exact time</option><option value="estimated">Estimated time</option>
+              <option value="unknown">Unknown</option></select></label>
+            <label><span>Physical receipt time (when known)</span>
+              <input type="time" step="1" name="physical_receipt_time"></label>
             <label><span>Actor</span><input name="actor" value="Cowboy" maxlength="100" required></label>
             <label class="wide-field"><span>Reason (optional)</span>
               <input name="reason" maxlength="500" value="Verified Overture shipment receipt"></label>
@@ -1978,6 +1986,11 @@ class InventoryWebApp:
           <div><dt>Verified quantity</dt><dd>{v["actual_quantity"]} refill rolls</dd></div>
           <div><dt>Condition</dt><dd>{esc(v["condition"].title())}</dd></div>
           <div><dt>Location</dt><dd>{esc(v["location"])}</dd></div>
+          <div><dt>Receiving batch UUID</dt><dd>{esc(v["batch_uuid"])}</dd></div>
+          <div><dt>Physical receipt</dt><dd>{esc(v["physical_receipt_date"])}
+          Â· {esc(v["physical_receipt_time"] or "time unknown")}
+          Â· {esc(v["receipt_time_precision"])}</dd></div>
+          <div><dt>Delivery evidence</dt><dd>{len(v["evidence"])} immutable record(s)</dd></div>
           <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div></dl>
           <h3>Permanent THS-FIL IDs to create</h3><ul class="id-preview">{ids}</ul></section>
         <form class="confirm-form" method="post" action="/orders/receive/confirm">

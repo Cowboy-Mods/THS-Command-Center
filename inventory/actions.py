@@ -301,13 +301,42 @@ class InventoryActionService:
     def receive_order(
         self, order_id: int, *, actual_quantity: int, condition: str,
         location_id: int, reason: str | None = None, note: str | None = None,
-        request_nonce: str | None = None,
+        request_nonce: str | None = None, batch_uuid: str | None = None,
+        permanent_ids: list[str] | None = None,
+        physical_receipt_date: str | None = None,
+        physical_receipt_time: str | None = None,
+        receipt_time_precision: str = "unknown",
+        evidence_links: list[dict] | None = None,
     ) -> dict:
         order = self._row("orders", order_id)
         if not order or order["state"] not in {"ordered", "shipped", "delivered"}:
             raise InventoryActionError("only an active pending order can be received")
         if actual_quantity <= 0:
             raise InventoryActionError("verified received quantity must be positive")
+        outstanding = order["expected_quantity"] - order["received_quantity"]
+        if outstanding <= 0:
+            raise InventoryActionError("order is already fully received")
+        if actual_quantity != outstanding:
+            raise InventoryActionError(
+                "full-order receipt quantity must exactly equal the outstanding quantity"
+            )
+        if not batch_uuid or not request_nonce:
+            raise InventoryActionError("preview-bound receipt identities are required")
+        if not permanent_ids or len(permanent_ids) != actual_quantity:
+            raise InventoryActionError("preview-bound permanent IDs are required")
+        if receipt_time_precision not in {"exact", "estimated", "date_only", "unknown"}:
+            raise InventoryActionError("receipt-time precision is invalid")
+        if receipt_time_precision == "date_only" and (
+            not physical_receipt_date or physical_receipt_time is not None
+        ):
+            raise InventoryActionError("date-only receipt requires a date and no physical time")
+        if receipt_time_precision in {"exact", "estimated"} and (
+            not physical_receipt_date or not physical_receipt_time
+        ):
+            raise InventoryActionError("timed receipt requires physical date and time")
+        evidence_links = evidence_links or []
+        if not evidence_links:
+            raise InventoryActionError("delivery evidence is required")
         if condition not in {"new", "good", "damaged"}:
             raise InventoryActionError("verified condition is invalid")
         if not order["catalog_item_id"]:
@@ -329,21 +358,23 @@ class InventoryActionService:
         def work():
             batch_id = self.db.execute(
                 """INSERT INTO receiving_batches(
-                batch_uuid,order_id,actor,actual_quantity,condition,note)
-                VALUES (?,?,?,?,?,?)""",
+                batch_uuid,order_id,actor,actual_quantity,condition,note,
+                physical_receipt_date,physical_receipt_time,receipt_time_precision,recorded_at)
+                VALUES (?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)""",
                 (
-                    str(uuid.uuid4()), order_id, self.context.actor,
-                    actual_quantity, condition, note,
+                    batch_uuid, order_id, self.context.actor, actual_quantity, condition, note,
+                    physical_receipt_date, physical_receipt_time, receipt_time_precision,
                 ),
             ).lastrowid
             instance_ids = []
             action_ids = []
-            for _ in range(actual_quantity):
+            for permanent_id in permanent_ids:
                 instance_id = self.add_individual_instance(
                     order["catalog_item_id"], state="sealed", location_id=location_id,
                     original_quantity=product["nominal_weight_g"],
                     remaining_quantity=product["nominal_weight_g"],
                     unit_id=product["base_unit_id"], condition=condition,
+                    permanent_id=permanent_id,
                     verified=True, reason=reason or f"Receive {order['order_number']}",
                     order_ref=order["order_number"],
                 )
@@ -359,14 +390,21 @@ class InventoryActionService:
                 ).fetchone()
                 instance_ids.append(instance_id)
                 action_ids.append(action["id"])
+            evidence_link_ids = []
+            for link in evidence_links:
+                evidence_link_ids.append(self.db.execute(
+                    """INSERT INTO receiving_batch_delivery_evidence(
+                    link_uuid,receiving_batch_id,evidence_id) VALUES (?,?,?)""",
+                    (link["link_uuid"], batch_id, link["evidence_id"]),
+                ).lastrowid)
             total_received = order["received_quantity"] + actual_quantity
-            complete = total_received >= order["expected_quantity"]
             self.db.execute(
                 """UPDATE orders SET received_quantity=?,state=?,
-                received_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE received_at END,
-                delivered_at=COALESCE(delivered_at,CURRENT_TIMESTAMP),
+                received_at=CURRENT_TIMESTAMP,
+                physical_received_date=?,physical_received_time=?,receipt_time_precision=?,
                 updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (total_received, "received" if complete else "delivered", int(complete), order_id),
+                (total_received, "received", physical_receipt_date,
+                 physical_receipt_time, receipt_time_precision, order_id),
             )
             batch = self._row("receiving_batches", batch_id)
             batch_action_id = self._audit(
@@ -378,10 +416,10 @@ class InventoryActionService:
                 "order_id": order_id, "order_number": order["order_number"],
                 "batch_id": batch_id, "batch_uuid": batch["batch_uuid"],
                 "instance_ids": instance_ids, "instance_action_ids": action_ids,
+                "evidence_link_ids": evidence_link_ids,
                 "batch_action_id": batch_action_id,
                 "actual_quantity": actual_quantity, "total_received": total_received,
-                "remaining_quantity": max(0, order["expected_quantity"] - total_received),
-                "state": "received" if complete else "delivered",
+                "remaining_quantity": 0, "state": "received",
                 "manufacturer": product["manufacturer"],
             }
 

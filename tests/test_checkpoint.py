@@ -5,6 +5,7 @@ from pathlib import Path
 from inventory.checkpoint import (
     apply_checkpoint, dry_run, purchase_foundation_dry_run,
     purchase_phase2a_dry_run, sha256, verify_database,
+    receiving_hardening_dry_run,
 )
 from inventory.db import connect, migrate
 
@@ -124,6 +125,30 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
         result = purchase_phase2a_dry_run(self.database)
         self.assertEqual(result["applied"], [])
         self.assertEqual(result["integrity"], "ok")
+
+    def test_07_receiving_hardening_dry_run_preserves_existing_content(self):
+        from inventory import db as db_module
+        migrations = db_module.MIGRATIONS
+        old = self.root / "pre016.sqlite3"
+        pre016 = self.root / "pre016-migrations"
+        pre016.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name < "016_legacy_order_receiving_hardening.sql":
+                (pre016 / source.name).write_bytes(source.read_bytes())
+        db_module.MIGRATIONS = pre016
+        try:
+            db = connect(old)
+            migrate(db)
+            db.close()
+        finally:
+            db_module.MIGRATIONS = migrations
+        result = receiving_hardening_dry_run(old)
+        self.assertEqual(result["applied"], ["016_legacy_order_receiving_hardening.sql"])
+        self.assertEqual(result["applied_again"], [])
+        self.assertEqual(result["migration_count"], 16)
+        self.assertEqual(result["integrity"], "ok")
+        self.assertEqual(result["foreign_key_violations"], 0)
+        self.assertFalse(any(result["new_table_counts"].values()))
 
 
 if __name__ == "__main__":

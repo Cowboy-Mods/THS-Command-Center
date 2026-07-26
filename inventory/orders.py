@@ -10,6 +10,8 @@ import time
 import uuid
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import date, time as clock_time
+from pathlib import Path
 
 from .actions import ActionContext, InventoryActionError, InventoryActionService
 
@@ -57,6 +59,26 @@ class OrderReceiptWorkflow:
         actual_quantity = self._positive_int(
             form, "actual_quantity", "verified received quantity must be positive"
         )
+        physical_receipt_date = self._text(form, "physical_receipt_date", 10)
+        try:
+            date.fromisoformat(physical_receipt_date)
+        except ValueError as exc:
+            raise OrderReceiptError("physical receipt date must use YYYY-MM-DD") from exc
+        precision = self._text(form, "receipt_time_precision", 20).lower()
+        if precision not in {"exact", "estimated", "date_only", "unknown"}:
+            raise OrderReceiptError("select a valid receipt-time precision")
+        physical_receipt_time = self._optional(form, "physical_receipt_time", 8)
+        if physical_receipt_time:
+            try:
+                clock_time.fromisoformat(physical_receipt_time)
+            except ValueError as exc:
+                raise OrderReceiptError("physical receipt time must use HH:MM[:SS]") from exc
+            if len(physical_receipt_time) == 5:
+                physical_receipt_time += ":00"
+        if precision == "date_only" and physical_receipt_time:
+            raise OrderReceiptError("date-only receipt must not supply a physical time")
+        if precision in {"exact", "estimated"} and not physical_receipt_time:
+            raise OrderReceiptError("exact or estimated receipt requires a physical time")
         condition = self._text(form, "condition", 20).lower()
         if condition not in {"new", "good", "damaged"}:
             raise OrderReceiptError("select the verified shipment condition")
@@ -70,6 +92,13 @@ class OrderReceiptWorkflow:
             order = self._order(db, order_id)
             if not order or order["state"] not in {"ordered", "shipped", "delivered"}:
                 raise OrderReceiptError("selected order is not pending receipt")
+            outstanding = order["expected_quantity"] - order["received_quantity"]
+            if outstanding <= 0:
+                raise OrderReceiptError("selected order is already fully received")
+            if actual_quantity != outstanding:
+                raise OrderReceiptError(
+                    f"verified quantity must equal the full outstanding quantity ({outstanding})"
+                )
             location = db.execute(
                 "SELECT id,name,kind FROM locations WHERE id=? AND archived_at IS NULL",
                 (location_id,),
@@ -84,12 +113,36 @@ class OrderReceiptWorkflow:
             permanent_ids = [
                 f"{prefix}-{int(number) + offset:06d}" for offset in range(actual_quantity)
             ]
+            evidence = self._delivery_evidence(db, order["id"])
+            requested = form.get("evidence_uuids")
+            if isinstance(requested, str):
+                requested = [value.strip() for value in requested.split(",") if value.strip()]
+            requested = requested or [row["evidence_uuid"] for row in evidence]
+            selected = [row for row in evidence if row["evidence_uuid"] in requested]
+            if len(selected) != len(set(requested)) or not selected:
+                raise OrderReceiptError("select valid delivery evidence belonging to this order")
+            for row in selected:
+                digest, size = self._file_identity(Path(row["file_path"]))
+                if digest != row["sha256"] or size != row["file_size"]:
+                    raise OrderReceiptError(
+                        "delivery evidence file is missing or changed; correct it before review"
+                    )
             values = {
-                "version": 1, "reviewed_at": int(time.time()), "nonce": nonce,
+                "version": 2, "reviewed_at": int(time.time()), "nonce": nonce,
                 "module": self.MODULE, "actor": actor, "reason": reason, "note": note,
                 "order": dict(order), "location_id": location["id"],
                 "location": location["name"], "actual_quantity": actual_quantity,
                 "condition": condition, "permanent_ids": permanent_ids,
+                "batch_uuid": str(uuid.uuid4()),
+                "physical_receipt_date": physical_receipt_date,
+                "physical_receipt_time": physical_receipt_time,
+                "receipt_time_precision": precision,
+                "evidence": selected,
+                "evidence_links": [
+                    {"link_uuid": str(uuid.uuid4()), "evidence_id": row["id"],
+                     "evidence_uuid": row["evidence_uuid"]}
+                    for row in selected
+                ],
             }
         return OrderReceiptReview(self._sign(values), values)
 
@@ -104,10 +157,7 @@ class OrderReceiptWorkflow:
             ).fetchone():
                 raise OrderReceiptError("this receipt preview was already used")
             current = self._order(db, values["order"]["id"])
-            if not current or any(
-                current[key] != values["order"][key]
-                for key in ("state", "received_quantity", "catalog_item_id", "expected_quantity")
-            ):
+            if not current or dict(current) != values["order"]:
                 raise OrderReceiptError("order changed after preview; review the receipt again")
             service = InventoryActionService(
                 db, ActionContext(
@@ -118,11 +168,27 @@ class OrderReceiptWorkflow:
                 raise OrderReceiptError(
                     "inventory changed after preview; review the generated THS-FIL IDs again"
                 )
+            evidence = self._delivery_evidence(db, current["id"])
+            indexed = {row["evidence_uuid"]: row for row in evidence}
+            for expected in values["evidence"]:
+                current_evidence = indexed.get(expected["evidence_uuid"])
+                if current_evidence != expected:
+                    raise OrderReceiptError("delivery evidence changed after preview; review again")
+                digest, size = self._file_identity(Path(expected["file_path"]))
+                if digest != expected["sha256"] or size != expected["file_size"]:
+                    raise OrderReceiptError(
+                        "delivery evidence file is missing or changed; review again"
+                    )
             result = service.receive_order(
                 current["id"], actual_quantity=values["actual_quantity"],
                 condition=values["condition"], location_id=values["location_id"],
                 reason=values["reason"], note=values["note"],
                 request_nonce=values["nonce"],
+                batch_uuid=values["batch_uuid"], permanent_ids=values["permanent_ids"],
+                physical_receipt_date=values["physical_receipt_date"],
+                physical_receipt_time=values["physical_receipt_time"],
+                receipt_time_precision=values["receipt_time_precision"],
+                evidence_links=values["evidence_links"],
             )
             actual_ids = [
                 row[0] for row in db.execute(
@@ -146,9 +212,13 @@ class OrderReceiptWorkflow:
 
     def _order(self, db, order_id: int):
         return db.execute(
-            """SELECT o.*,ci.item_type_id,ci.product_line,ci.variant,
+            """SELECT o.*,ci.item_type_id,ci.name product_name,ci.product_line,ci.variant,
             m.name manufacturer,
-            MAX(CASE WHEN ad.name='nominal_weight_g' THEN av.numeric_value END) nominal_weight_g
+            MAX(CASE WHEN ad.name='nominal_weight_g' THEN av.numeric_value END) nominal_weight_g,
+            MAX(CASE WHEN ad.name='material' THEN av.text_value END) material_name,
+            MAX(CASE WHEN ad.name='manufacturer_color_name' THEN av.text_value END) color_name,
+            MAX(CASE WHEN ad.name='diameter_mm' THEN av.numeric_value END) diameter_mm,
+            MAX(CASE WHEN ad.name='filament_form' THEN av.text_value END) filament_form
             FROM orders o JOIN catalog_items ci ON ci.id=o.catalog_item_id
             JOIN item_types it ON it.id=ci.item_type_id AND it.tracking_method='individual'
             JOIN manufacturers m ON m.id=ci.manufacturer_id
@@ -177,11 +247,30 @@ class OrderReceiptWorkflow:
             values = json.loads(body)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise OrderReceiptError("receipt preview is invalid; start again") from exc
-        if values.get("version") != 1 or values.get("module") != self.MODULE:
+        if values.get("version") != 2 or values.get("module") != self.MODULE:
             raise OrderReceiptError("receipt preview is invalid; start again")
         if time.time() - values.get("reviewed_at", 0) > self.MAX_REVIEW_AGE_SECONDS:
             raise OrderReceiptError("receipt preview expired; start again")
         return values
+
+    @staticmethod
+    def _delivery_evidence(db, order_id):
+        return [dict(row) for row in db.execute(
+            """SELECT id,evidence_uuid,order_id,evidence_scope,evidence_type,file_path,
+            sha256,file_size,caption,captured_at,actor,request_nonce,added_at
+            FROM order_delivery_evidence
+            WHERE order_id=? AND evidence_scope='delivery' ORDER BY id""", (order_id,)
+        )]
+
+    @staticmethod
+    def _file_identity(path):
+        if not path.is_file():
+            raise OrderReceiptError("delivery evidence file is missing")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest(), path.stat().st_size
 
     def _connect(self):
         from .db import connect
