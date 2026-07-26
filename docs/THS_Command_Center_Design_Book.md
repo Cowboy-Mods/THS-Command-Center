@@ -50,7 +50,7 @@ THS Command Center Design Philosophy (Draft)
 
 1. Builder First
 
-Every feature must make life easier for the builder.
+Every feature must make life easier for the builder and reflect the way real builders actually work.
 
 2. Reduce Context Switching
 
@@ -58,7 +58,7 @@ The Command Center should eliminate the need to constantly switch between phones
 
 3. Information Before Interaction
 
-The most important information should be visible without touching the screen.
+The most important information should be visible without touching the screen. Operational restrictions must always be visible and must never appear as an all-clear condition. 
 
 4. Modular by Design
 
@@ -75,6 +75,29 @@ Every part of the project should be documented so the next builder can understan
 7. Form Follows Function
 
 It should look incredible—but never at the expense of usability.
+
+Personal by Design
+
+The Command Center should adapt to the builder, not force the builder to adapt to the software.
+
+Every workshop has its own identity, workflow, priorities, and personality. THS should allow builders to shape the appearance and presentation of the system while preserving the same dependable core underneath.
+
+Workshop profiles may include:
+
+visual themes
+dashboard layouts
+status indicators
+icons
+voice presentation
+alert styles
+measurement preferences
+trade-specific or hobby-specific presentation
+
+A traffic-operations shop may use signal-style status lights. A machine shop may prefer industrial stack lights. A print farm may want printer status front and center.
+
+Customization must never weaken safety, clarity, reliability, or auditability.
+
+One engine. Your workshop.
 
 8. Every Feature Must Earn Its Place
 
