@@ -99,7 +99,7 @@ All checked pages avoided horizontal document scrolling at those normal viewport
 
 Normal dashboard, inventory, product, spool, AMS, search, filter, and placeholder routes remain read-only. They do not add, edit, import, reserve, consume, move, load, unload, archive, correct, or delete inventory.
 
-The only mutation route is the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md) confirmation. Its signed preview and explicit confirmation call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
+The only mutation routes are the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md) and [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md) confirmations. Their signed previews and explicit confirmations call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
 
 ## Tests
 
@@ -107,7 +107,7 @@ The only mutation route is the purpose-built [Receive a Verified Sealed Spool](R
 py -3 -m unittest discover -v
 ```
 
-The interface suite covers the 24 original dashboard acceptance scenarios and 14 receive-workflow scenarios in addition to the inventory/database and action-service suites.
+The interface suite covers the 24 original dashboard acceptance scenarios, 14 receive-workflow scenarios, and 16 replacement-workflow scenarios in addition to the inventory/database and action-service suites.
 
 ## Placeholder modules
 
@@ -116,8 +116,8 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 ## Known limitations
 
 - Local development server only; no authentication, permissions, TLS, or external hosting.
-- Only one editable workflow exists: receive one verified sealed spool.
-- No editing of existing inventory, quantity correction, AMS editing, or broad product management.
+- Two narrow workflows exist: receive one verified sealed spool and replace one active loaded spool.
+- No general editing, remaining-weight editing, inventory correction, arbitrary AMS editing, or broad product management.
 - No live refresh or push notifications.
 - No Bambu, Maeve voice, RFID, NFC, barcode, or QR integration.
 - Product-level search returns the grouped product that owns a matching THS-FIL ID; spool details are selected from that product.
@@ -125,5 +125,5 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 
 ## Next checkpoint
 
-Implement **Open Existing Sealed Spool** next. The first real target will be one of the two existing Bambu Lab PLA Basic Orange spools for the modified Tweety Bird THS-logo hat. Select one permanent ID and leave the second Orange spool sealed.
+Review the first live shop use of Replace Active Filament Spool. Add another operation only after its physical steps and audit output are verified in the shop.
 
