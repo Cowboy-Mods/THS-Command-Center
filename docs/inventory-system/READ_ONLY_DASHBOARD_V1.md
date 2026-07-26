@@ -87,6 +87,17 @@ No-results pages state that no filament was found. The application does not inve
 
 The shell uses a persistent desktop navigation and a keyboard-accessible collapsible mobile navigation. Touch controls are at least approximately 44 pixels high. Tables become labeled stacked records on phone widths.
 
+### Manual responsive QA approval
+
+Responsive QA was completed successfully on July 26, 2026.
+
+- Desktop, 1024 x 600, and phone-width layouts were manually tested.
+- Navigation and the Controlled Workflows menu function correctly.
+- Desktop sidebar and phone navigation behavior are correct.
+- No clipping or overlap was observed.
+- Scrolling works normally.
+- The responsive layout is approved.
+
 Verified browser viewports:
 
 - Windows desktop: 1440 Ã— 900
