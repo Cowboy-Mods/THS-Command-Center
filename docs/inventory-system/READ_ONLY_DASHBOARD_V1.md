@@ -99,6 +99,8 @@ All checked pages avoided horizontal document scrolling at those normal viewport
 
 No web route or control adds, edits, imports, reserves, consumes, moves, loads, unloads, archives, corrects, or deletes inventory. Query connections open SQLite in read-only mode. The read-only badge is informational; the safety boundary is enforced by the absence of mutation routes and read-only database connections.
 
+All future mutation routes must call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). The dashboard must never gain direct SQL write access.
+
 ## Tests
 
 ```powershell
@@ -122,6 +124,5 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 
 ## Next checkpoint
 
-Cowboy and ChatGPT should review this read-only interface before any editable workflow begins. The recommended next build is a deliberately scoped, auditable manual inventory action serviceâ€”not a general-purpose editing screen.
-
+The centralized Inventory Action Service is now implemented. Cowboy and ChatGPT should review its audit and reversal contract before choosing the first narrow editable workflow. Do not build a general-purpose database editor.
 
