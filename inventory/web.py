@@ -11,6 +11,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 from .db import DEFAULT_DB, ROOT
 from .navigation import MODULES, NAVIGATION
 from .queries import DatabaseNotReady, InventoryQueries
+from .receiving import ReceiveSpoolError, ReceiveSpoolWorkflow
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -35,15 +36,22 @@ class InventoryWebApp:
     def __init__(self, database=DEFAULT_DB):
         self.database = Path(database)
         self.queries = InventoryQueries(self.database)
+        self.receiving = ReceiveSpoolWorkflow(self.database)
 
-    def response(self, target: str) -> tuple[int, list[tuple[str, str]], bytes]:
+    def response(
+        self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
+    ) -> tuple[int, list[tuple[str, str]], bytes]:
         url = urlsplit(target)
         if url.path.startswith("/static/"):
             return self._static(url.path)
         try:
-            body, status = self._route(url.path, parse_qs(url.query))
+            body, status = self._route(
+                method.upper(), url.path, parse_qs(url.query), form or {}
+            )
         except DatabaseNotReady as exc:
             body, status = self._database_error(str(exc)), 503
+        except ReceiveSpoolError as exc:
+            body, status = self._receive_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -56,7 +64,19 @@ class InventoryWebApp:
             ("Cache-Control", "no-store"),
         ], content
 
-    def _route(self, path: str, query: dict[str, list[str]]) -> tuple[str, int]:
+    def _route(
+        self, method: str, path: str, query: dict[str, list[str]], form: dict[str, str],
+    ) -> tuple[str, int]:
+        if method == "GET" and path == "/inventory/filament/receive":
+            return self._receive_form(), 200
+        if method == "POST" and path == "/inventory/filament/receive/review":
+            return self._receive_review(self.receiving.review(form)), 200
+        if method == "POST" and path == "/inventory/filament/receive/confirm":
+            if form.get("confirm") != "receive":
+                raise ReceiveSpoolError("explicit confirmation is required")
+            return self._receive_complete(self.receiving.commit(form.get("review_token", ""))), 201
+        if method != "GET":
+            return self._method_not_allowed(), 405
         if path == "/":
             return self._dashboard(), 200
         if path == "/inventory/filament":
@@ -90,7 +110,7 @@ class InventoryWebApp:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>{esc(title)} Â· THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=1">
+  <link rel="stylesheet" href="/static/style.css?v=2">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
@@ -100,7 +120,7 @@ class InventoryWebApp:
       aria-expanded="false"><span aria-hidden="true">â˜°</span><span>Menu</span></button>
     <a class="brand" href="/"><span class="brand-mark">THS</span>
       <span><strong>Inventory System</strong><small>THS Command Center</small></span></a>
-    <span class="readonly-badge">Read-only checkpoint</span>
+    <span class="readonly-badge">Controlled receiving</span>
   </header>
   <div class="app-layout">
     <nav class="sidebar" id="site-navigation" aria-label="Main navigation">
@@ -233,12 +253,159 @@ class InventoryWebApp:
             <a href="/inventory/filament">Clear</a></div>
         </form>
         <div class="result-heading" aria-live="polite"><strong>{len(data["products"])} grouped products</strong>
-          <span>One card per catalog product</span></div>
+          <span>One card per catalog product</span>
+          <a class="primary-link" href="/inventory/filament/receive">Receive verified sealed spool</a></div>
         <section class="product-grid" aria-label="Grouped filament products">{result}</section>"""
         return self._shell(
             "Filament Inventory", content,
             '<a href="/">Dashboard</a> / <span aria-current="page">Filament Inventory</span>',
             description="Grouped by manufacturer, product line, and color. Select a product to inspect its physical spools.",
+        )
+
+    def _receive_form(self) -> str:
+        options = self.receiving.options()
+        products = "".join(
+            f'<option value="{p["id"]}">{esc(p["manufacturer"])} â€” '
+            f'{esc(p["product_line"])} â€” {esc(p["color"])} '
+            f'({esc(p["material"])}, {esc(p["diameter_mm"])} mm, '
+            f'{grams(p["nominal_weight_g"])})</option>'
+            for p in options["products"]
+        )
+        locations = "".join(
+            f'<option value="{row["id"]}">{esc(row["name"])}</option>'
+            for row in options["locations"]
+        )
+        content = f"""
+        <div class="notice"><strong>Narrow verified workflow</strong>
+          <p>This creates one new sealed physical spool. It cannot edit existing inventory.</p></div>
+        <form class="receive-form" method="post" action="/inventory/filament/receive/review">
+          <fieldset><legend>1. Catalog product</legend>
+            <label class="choice"><input type="radio" name="product_mode" value="existing" checked>
+              <span><strong>Select an existing product</strong><small>Use its verified catalog specifications.</small></span>
+            </label>
+            <label><span>Existing catalog product</span><select name="catalog_item_id">
+              <option value="">Select a product</option>{products}</select></label>
+            <div class="form-divider"><span>Or create a verified product if it does not exist</span></div>
+            <label class="choice"><input type="radio" name="product_mode" value="new">
+              <span><strong>Create a new verified catalog product</strong>
+                <small>Every field below must be checked against the spool packaging.</small></span>
+            </label>
+            <div class="form-grid">
+              <label><span>Manufacturer</span><input name="manufacturer" maxlength="120"></label>
+              <label><span>Product line</span><input name="product_line" maxlength="120"></label>
+              <label><span>Material</span><input name="material" maxlength="80"></label>
+              <label><span>Manufacturer color</span><input name="color" maxlength="120"></label>
+              <label><span>Diameter (mm)</span><input name="diameter_mm" type="number"
+                min="1" max="10" step="0.01" inputmode="decimal"></label>
+              <label><span>Nominal filament weight (g)</span><input name="nominal_weight_g"
+                type="number" min="1" max="100000" step="0.01" inputmode="decimal"></label>
+            </div>
+          </fieldset>
+          <fieldset><legend>2. Verified receiving details</legend><div class="form-grid">
+            <label><span>Initial location</span><select name="location_id" required>
+              <option value="">Select storage location</option>{locations}</select></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy" maxlength="100" required></label>
+            <label class="wide-field"><span>Reason or receiving note (optional)</span>
+              <textarea name="reason" maxlength="500" rows="3"></textarea></label>
+          </div></fieldset>
+          <div class="notice subdued"><strong>Fixed by this workflow</strong>
+            <p>Status: Sealed Â· Condition: New Â· Verified: Yes Â· Module: {esc(self.receiving.MODULE)}</p></div>
+          <div class="form-actions"><a href="/inventory/filament">Cancel</a>
+            <button type="submit">Review before receiving</button></div>
+        </form>"""
+        return self._shell(
+            "Receive a Verified Sealed Spool", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Receive spool</span>',
+            description="One carefully validated physical spool at a time.",
+        )
+
+    def _receive_review(self, review) -> str:
+        v = review.values
+        fields = (
+            ("Manufacturer", v["manufacturer"]),
+            ("Product Line", v["product_line"]),
+            ("Material", v["material"]),
+            ("Color", v["color"]),
+            ("Diameter", f'{v["diameter_mm"]:g} mm'),
+            ("Nominal Weight", grams(v["nominal_weight_g"])),
+            ("Initial Status", "Sealed"),
+            ("Initial Location", v["location"]),
+            ("Generated THS-FIL ID", v["permanent_id"]),
+            ("Actor", v["actor"]),
+            ("Module", v["module"]),
+            ("Optional Reason", v["reason"] or "No reason provided"),
+        )
+        details = "".join(
+            f"<div><dt>{esc(label)}</dt><dd>{esc(value)}</dd></div>"
+            for label, value in fields
+        )
+        content = f"""
+        <div class="notice"><strong>Nothing has been written yet</strong>
+          <p>Check every value below. The permanent ID is reserved only when you confirm.</p></div>
+        <section class="panel review-panel"><h2>Spool receiving review</h2>
+          <dl class="detail-list">{details}</dl></section>
+        <form class="confirm-form" method="post" action="/inventory/filament/receive/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice confirm-choice"><input type="checkbox" name="confirm"
+            value="receive" required><span><strong>I verified these values against the physical spool.</strong>
+            <small>Confirming creates the spool, transaction, and immutable audit record.</small></span></label>
+          <div class="form-actions"><a href="/inventory/filament/receive">Go back without saving</a>
+            <button type="submit">Confirm and receive spool</button></div>
+        </form>"""
+        return self._shell(
+            f'Review {v["permanent_id"]}', content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<a href="/inventory/filament/receive">Receive spool</a> / '
+            '<span aria-current="page">Review</span>',
+        )
+
+    def _receive_complete(self, result: dict) -> str:
+        content = f"""
+        <div class="success-panel"><p class="eyebrow">Inventory action completed</p>
+          <h2>{esc(result["permanent_id"])} was received</h2>
+          <p>One verified sealed physical spool now exists in {esc(result["location"])}.</p></div>
+        <div class="detail-grid">
+          <section class="panel"><h2>Received spool</h2><dl class="detail-list">
+            <div><dt>Permanent ID</dt><dd><strong>{esc(result["permanent_id"])}</strong></dd></div>
+            <div><dt>Product</dt><dd>{esc(result["manufacturer"])} Â·
+              {esc(result["product_line"])} Â· {esc(result["color"])}</dd></div>
+            <div><dt>Status</dt><dd>Sealed</dd></div>
+            <div><dt>Location</dt><dd>{esc(result["location"])}</dd></div>
+            <div><dt>Nominal weight</dt><dd>{grams(result["nominal_weight_g"])}</dd></div>
+          </dl></section>
+          <section class="panel"><h2>Recorded history</h2><dl class="detail-list">
+            <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
+            <div><dt>Module</dt><dd>{esc(result["module"])}</dd></div>
+            <div><dt>Inventory transaction</dt><dd>#{result["transaction_id"]}</dd></div>
+            <div><dt>Immutable audit action</dt><dd>#{result["action_id"]}</dd></div>
+            <div><dt>Recorded</dt><dd>{esc(result["occurred_at"])}</dd></div>
+            <div><dt>Reason</dt><dd>{display(result["reason"], "No reason provided")}</dd></div>
+          </dl></section>
+        </div>
+        <div class="form-actions"><a href="/inventory/filament/receive">Receive another spool</a>
+          <a class="primary-link" href="/inventory/filament/spools/{result["instance_id"]}">
+            View {esc(result["permanent_id"])}</a></div>"""
+        return self._shell(
+            f'Received {result["permanent_id"]}', content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Receive complete</span>',
+        )
+
+    def _receive_error(self, message: str) -> str:
+        content = f"""<section class="empty-state"><p class="eyebrow">Not received</p>
+          <h2>Spool was not added</h2><p>{esc(message)}</p>
+          <a class="primary-link" href="/inventory/filament/receive">Return to receiving form</a>
+          </section>"""
+        return self._shell(
+            "Receive spool error", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Receive error</span>',
+        )
+
+    def _method_not_allowed(self) -> str:
+        return self._error_page(
+            "Method not allowed", "This route does not accept that type of request.", status="405"
         )
 
     def _product(self, p: dict) -> str:
@@ -439,6 +606,28 @@ def make_handler(app: InventoryWebApp):
                 self.send_header(name, value)
             self.end_headers()
 
+        def do_POST(self):
+            content_type = self.headers.get("Content-Type", "")
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = -1
+            if content_type.split(";", 1)[0].strip() != "application/x-www-form-urlencoded":
+                self.send_error(415, "Form submissions only")
+                return
+            if length < 0 or length > 32768:
+                self.send_error(413, "Form submission is too large")
+                return
+            raw = self.rfile.read(length).decode("utf-8")
+            parsed = parse_qs(raw, keep_blank_values=True)
+            form = {key: values[-1] for key, values in parsed.items()}
+            status, headers, body = app.response(self.path, method="POST", form=form)
+            self.send_response(status)
+            for name, value in headers:
+                self.send_header(name, value)
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, format, *args):
             print(f"[THS Inventory] {self.address_string()} - {format % args}")
 
@@ -456,7 +645,7 @@ def serve(database=DEFAULT_DB, host="127.0.0.1", port=8787) -> None:
         pass
     server = ThreadingHTTPServer((host, port), make_handler(app))
     print(f"THS Inventory System running at http://{host}:{port}")
-    print("Read-only checkpoint. Press Ctrl+C to stop.")
+    print("Controlled receiving enabled. Existing inventory remains read only. Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
