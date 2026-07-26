@@ -59,7 +59,9 @@ The first visible Filament Inventory interface is complete. It reads the migrate
 - state, manufacturer, material, and low-stock filters;
 - honest no-results and no-reorder-rule states.
 
-No inventory-changing controls or routes exist. Setup, startup, responsive behavior, routes, and current limitations are documented in [Read-Only Dashboard v1](READ_ONLY_DASHBOARD_V1.md).
+The original browsing routes remain read-only. One narrow confirmed workflow now exists: [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md). It selects or creates a verified product, previews the next `THS-FIL` ID, shows every value before writing, and commits through the Inventory Action Service.
 
-Future filament mutations must use the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). It already supports receiving individual spools, moves, corrections, state changes, reservations, AMS load/unload, immutable before/after auditing, and supported reversals. No editable filament UI is exposed yet.
+No existing inventory can be edited. Quantity corrections, AMS editing, and broad product management remain unexposed. Future filament mutations must use the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md).
+
+The next checkpoint is **Open Existing Sealed Spool**. It should open one specific existing Bambu Lab PLA Basic Orange `THS-FIL` spool for the modified Tweety Bird hat project while leaving the second Orange spool sealed.
 
