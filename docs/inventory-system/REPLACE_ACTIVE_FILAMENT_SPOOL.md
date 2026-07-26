@@ -73,11 +73,27 @@ This shop event already occurred physically. The automated scenario proves the w
 ### Orange Tweety Bird replacement
 
 - outgoing: Orange filament, nearly empty, approximately ten minutes of expected print time remaining;
-- replacement: one of the two existing sealed Bambu Lab PLA Basic Orange spools;
+- replacement: one of the two existing sealed Bambu Lab PLA Basic Orange spools, now opened and loaded;
 - purpose: modified Tweety Bird hat with an orange THS logo;
-- operation: open and install the selected replacement in the outgoing spool's AMS slot.
+- operation: open and install the selected replacement in the outgoing spool's AMS slot;
+- verified event point: layer 283.
 
-Remaining-weight editing is intentionally outside this checkpoint. The descriptive reason may record the approximately ten-minute observation.
+Remaining-weight editing is intentionally outside this checkpoint. The descriptive reason may record the approximately ten-minute observation. The permanent IDs and exact slot must still be physically verified before committing the real workflow. After that commit, Bambu Lab PLA Basic Orange must show one loaded/open spool and one remaining sealed reserve. Reaching one sealed reserve is a verified future shopping/reorder-list trigger; this checkpoint does not add a general shopping-list workflow or silently create a reorder rule.
+
+## Optional operational notes
+
+Replacement workflow parents may record optional:
+
+- print or job name;
+- project/reason;
+- approximate layer number;
+- printer;
+- plate;
+- free-form operational note.
+
+These fields do not create a print-history subsystem and are never required. The Orange event should record job `TweetyFixed`, approximate layer 283, and reason `Modified Tweety Bird THS orange hat` when its permanent identities and slot are verified. The White event may record approximately layer 275 after identities and slot are verified.
+
+If no active outgoing AMS assignment exists yet, use [Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) to establish only the positively verified present state. Do not invent historical identities.
 
 ## Database changes
 
