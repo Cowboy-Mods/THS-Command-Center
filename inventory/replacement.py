@@ -1,0 +1,312 @@
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import json
+import secrets
+import sqlite3
+import time
+import uuid
+from contextlib import closing
+from dataclasses import dataclass
+
+from .actions import ActionContext, InventoryActionError, InventoryActionService
+from .db import connect
+
+
+class ReplaceSpoolError(ValueError):
+    """A guided spool replacement is invalid, stale, replayed, or incomplete."""
+
+
+@dataclass(frozen=True)
+class ReplacementReview:
+    token: str
+    values: dict
+
+
+class ReplaceActiveFilamentSpoolWorkflow:
+    MODULE = "filament-spool-replacement-ui"
+    MAX_REVIEW_AGE_SECONDS = 30 * 60
+
+    def __init__(self, database, secret: bytes | None = None):
+        self.database = database
+        self.secret = secret or secrets.token_bytes(32)
+
+    def options(self, filters: dict[str, str] | None = None) -> dict:
+        filters = filters or {}
+        with closing(connect(self.database)) as db:
+            current = [
+                dict(row) for row in db.execute(
+                    self._spool_select(include_ams=True) +
+                    """ WHERE ii.state='loaded' AND ii.archived_at IS NULL
+                    ORDER BY e.name,es.slot_number"""
+                )
+            ]
+            clauses = ["ii.state='sealed'", "ii.archived_at IS NULL"]
+            params: list[str] = []
+            q = filters.get("q", "").strip()
+            manufacturer = filters.get("manufacturer", "").strip()
+            material = filters.get("material", "").strip()
+            color = filters.get("color", "").strip()
+            if q:
+                clauses.append(
+                    "(ii.permanent_id LIKE ? OR m.name LIKE ? OR ci.product_line LIKE ? "
+                    "OR ci.variant LIKE ? OR mat.text_value LIKE ?)"
+                )
+                params.extend([f"%{q}%"] * 5)
+            for column, value in (
+                ("m.name", manufacturer), ("mat.text_value", material), ("ci.variant", color)
+            ):
+                if value:
+                    clauses.append(f"{column}=?")
+                    params.append(value)
+            replacements = [
+                dict(row) for row in db.execute(
+                    self._spool_select() + " WHERE " + " AND ".join(clauses) +
+                    " ORDER BY m.name,ci.product_line,ci.variant,ii.permanent_id",
+                    params,
+                )
+            ]
+            facets = {
+                "manufacturers": self._values(db, "m.name"),
+                "materials": self._values(db, "mat.text_value"),
+                "colors": self._values(db, "ci.variant"),
+            }
+            slots = [
+                dict(row) for row in db.execute(
+                    """SELECT es.id,e.name equipment_name,es.slot_number,
+                    aa.instance_id occupant_instance_id,ii.permanent_id occupant_permanent_id
+                    FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+                    LEFT JOIN ams_assignments aa ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
+                    LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+                    WHERE e.equipment_type='AMS' AND e.archived_at IS NULL
+                    ORDER BY e.name,es.slot_number"""
+                )
+            ]
+            return {
+                "current_spools": current,
+                "replacement_spools": replacements,
+                "slots": slots,
+                "filters": {
+                    "q": q, "manufacturer": manufacturer,
+                    "material": material, "color": color,
+                },
+                **facets,
+            }
+
+    def review(self, form: dict[str, str]) -> ReplacementReview:
+        if form.get("confirm_empty") != "yes":
+            raise ReplaceSpoolError('confirm "This spool is now empty."')
+        current_id = self._positive_int(form, "current_instance_id", "select the active spool")
+        replacement_id = self._positive_int(
+            form, "replacement_instance_id", "select a sealed replacement spool"
+        )
+        if current_id == replacement_id:
+            raise ReplaceSpoolError("current and replacement spools must be different")
+        actor = self._text(form, "actor", 100)
+        reason = self._optional(form, "reason", 500)
+
+        with closing(connect(self.database)) as db:
+            current = self._active_spool(db, current_id)
+            if not current:
+                raise ReplaceSpoolError("current spool must be actively loaded in an AMS")
+            replacement = self._sealed_spool(db, replacement_id)
+            if not replacement:
+                raise ReplaceSpoolError("replacement spool must be sealed and active")
+            destination_id = (
+                self._positive_int(form, "destination_slot_id", "select a destination AMS slot")
+                if str(form.get("destination_slot_id", "")).strip()
+                else current["slot_id"]
+            )
+            destination = db.execute(
+                """SELECT es.id,e.name equipment_name,es.slot_number,
+                aa.instance_id occupant_instance_id,ii.permanent_id occupant_permanent_id
+                FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+                LEFT JOIN ams_assignments aa ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
+                LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+                WHERE es.id=? AND e.equipment_type='AMS' AND e.archived_at IS NULL""",
+                (destination_id,),
+            ).fetchone()
+            if not destination:
+                raise ReplaceSpoolError("destination AMS slot does not exist")
+            if (
+                destination["occupant_instance_id"] is not None
+                and destination["occupant_instance_id"] != current_id
+            ):
+                raise ReplaceSpoolError("destination AMS slot is occupied by another spool")
+            values = {
+                "version": 1,
+                "reviewed_at": int(time.time()),
+                "review_nonce": uuid.uuid4().hex,
+                "module": self.MODULE,
+                "actor": actor,
+                "reason": reason,
+                "current": current,
+                "replacement": replacement,
+                "destination": dict(destination),
+            }
+        return ReplacementReview(self._sign(values), values)
+
+    def commit(self, token: str) -> dict:
+        values = self._verify(token)
+        db = connect(self.database)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            current = self._active_spool(db, values["current"]["id"])
+            replacement = self._sealed_spool(db, values["replacement"]["id"])
+            if current != values["current"]:
+                raise ReplaceSpoolError("active spool changed after preview; review again")
+            if replacement != values["replacement"]:
+                raise ReplaceSpoolError("replacement spool changed after preview; review again")
+            destination = db.execute(
+                """SELECT es.id,e.name equipment_name,es.slot_number,
+                aa.instance_id occupant_instance_id,ii.permanent_id occupant_permanent_id
+                FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+                LEFT JOIN ams_assignments aa ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
+                LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+                WHERE es.id=? AND e.equipment_type='AMS' AND e.archived_at IS NULL""",
+                (values["destination"]["id"],),
+            ).fetchone()
+            if not destination or dict(destination) != values["destination"]:
+                raise ReplaceSpoolError("destination AMS slot changed after preview; review again")
+            service = InventoryActionService(
+                db, ActionContext(
+                    actor=values["actor"], module=self.MODULE, origin="user"
+                ),
+            )
+            result = service.replace_active_filament_spool(
+                current["id"], replacement["id"], destination["id"],
+                reason=values["reason"], review_nonce=values["review_nonce"],
+            )
+            db.commit()
+            return {**values, **result}
+        except (InventoryActionError, sqlite3.IntegrityError) as exc:
+            db.rollback()
+            message = (
+                "this preview was already used; start a new replacement"
+                if "review_nonce" in str(exc) or "UNIQUE constraint failed" in str(exc)
+                else str(exc)
+            )
+            raise ReplaceSpoolError(message) from exc
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    def _active_spool(self, db, instance_id: int) -> dict | None:
+        row = db.execute(
+            self._spool_select(include_ams=True) +
+            """ WHERE ii.id=? AND ii.state='loaded' AND ii.archived_at IS NULL""",
+            (instance_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def _sealed_spool(self, db, instance_id: int) -> dict | None:
+        row = db.execute(
+            self._spool_select() +
+            """ WHERE ii.id=? AND ii.state='sealed' AND ii.archived_at IS NULL
+            AND NOT EXISTS (
+              SELECT 1 FROM ams_assignments aa
+              WHERE aa.instance_id=ii.id AND aa.unloaded_at IS NULL)""",
+            (instance_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    @staticmethod
+    def _spool_select(include_ams: bool = False) -> str:
+        fields = (
+            ",e.name equipment_name,es.slot_number,es.id slot_id"
+            if include_ams else ""
+        )
+        ams_joins = (
+            " JOIN ams_assignments aa ON aa.instance_id=ii.id AND aa.unloaded_at IS NULL"
+            " JOIN equipment_slots es ON es.id=aa.slot_id"
+            " JOIN equipment e ON e.id=es.equipment_id"
+            if include_ams else ""
+        )
+        return f"""
+            SELECT ii.id,ii.permanent_id,ii.state,ii.remaining_quantity,
+            m.name manufacturer,ci.product_line,ci.variant color,
+            mat.text_value material{fields}
+            FROM inventory_instances ii
+            JOIN catalog_items ci ON ci.id=ii.catalog_item_id
+            JOIN manufacturers m ON m.id=ci.manufacturer_id
+            LEFT JOIN catalog_item_attribute_values mat ON mat.catalog_item_id=ci.id
+              AND mat.attribute_definition_id=(
+                SELECT id FROM attribute_definitions WHERE name='material')
+            {ams_joins}"""
+
+    @staticmethod
+    def _values(db, column: str) -> list[str]:
+        allowed = {"m.name", "mat.text_value", "ci.variant"}
+        if column not in allowed:
+            raise RuntimeError("unsupported replacement facet")
+        return [
+            row[0] for row in db.execute(
+                f"""SELECT DISTINCT {column} FROM inventory_instances ii
+                JOIN catalog_items ci ON ci.id=ii.catalog_item_id
+                JOIN manufacturers m ON m.id=ci.manufacturer_id
+                LEFT JOIN catalog_item_attribute_values mat ON mat.catalog_item_id=ci.id
+                  AND mat.attribute_definition_id=(
+                    SELECT id FROM attribute_definitions WHERE name='material')
+                WHERE ii.state='sealed' AND ii.archived_at IS NULL
+                AND {column} IS NOT NULL ORDER BY {column}"""
+            )
+        ]
+
+    def _sign(self, values: dict) -> str:
+        body = json.dumps(values, sort_keys=True, separators=(",", ":")).encode()
+        signature = hmac.new(self.secret, body, hashlib.sha256).digest()
+        return self._b64(body) + "." + self._b64(signature)
+
+    def _verify(self, token: str) -> dict:
+        try:
+            body_text, signature_text = token.split(".", 1)
+            body = self._unb64(body_text)
+            signature = self._unb64(signature_text)
+            expected = hmac.new(self.secret, body, hashlib.sha256).digest()
+            if not hmac.compare_digest(signature, expected):
+                raise ValueError
+            values = json.loads(body)
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise ReplaceSpoolError("replacement preview is invalid; start again") from exc
+        if values.get("version") != 1 or values.get("module") != self.MODULE:
+            raise ReplaceSpoolError("replacement preview is invalid; start again")
+        if time.time() - values.get("reviewed_at", 0) > self.MAX_REVIEW_AGE_SECONDS:
+            raise ReplaceSpoolError("replacement preview expired; start again")
+        return values
+
+    @staticmethod
+    def _text(form: dict[str, str], key: str, limit: int) -> str:
+        value = str(form.get(key, "")).strip()
+        if not value:
+            raise ReplaceSpoolError(f"{key.replace('_', ' ')} is required")
+        if len(value) > limit or any(ord(char) < 32 for char in value):
+            raise ReplaceSpoolError(f"{key.replace('_', ' ')} is invalid")
+        return value
+
+    @classmethod
+    def _optional(cls, form: dict[str, str], key: str, limit: int) -> str | None:
+        value = str(form.get(key, "")).strip()
+        return cls._text(form, key, limit) if value else None
+
+    @staticmethod
+    def _positive_int(form: dict[str, str], key: str, message: str) -> int:
+        try:
+            value = int(form.get(key, ""))
+            if value <= 0:
+                raise ValueError
+            return value
+        except (TypeError, ValueError) as exc:
+            raise ReplaceSpoolError(message) from exc
+
+    @staticmethod
+    def _b64(value: bytes) -> str:
+        return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
+
+    @staticmethod
+    def _unb64(value: str) -> bytes:
+        return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
