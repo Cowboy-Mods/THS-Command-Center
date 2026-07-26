@@ -42,6 +42,33 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         self.assertIn("text/html", headers["Content-Type"])
         self.assertIn("<h1>Dashboard</h1>", page)
 
+    def test_02a_dashboard_is_the_primary_controlled_workflow_hub(self):
+        _, _, page = self.page("/")
+        self.assertIn('id="workflow-hub-title">Controlled workflows</h2>', page)
+        for path in (
+            "/inventory/filament/ams/initialize",
+            "/inventory/filament/replace",
+            "/inventory/filament/receive",
+        ):
+            self.assertGreaterEqual(page.count(f'href="{path}"'), 2)
+        self.assertIn("No route memorization required", page)
+
+    def test_02b_topbar_workflow_control_is_a_real_menu(self):
+        _, _, page = self.page("/")
+        self.assertIn('<details class="workflow-menu">', page)
+        self.assertIn("<summary>Controlled workflows</summary>", page)
+        self.assertIn("Initialize Verified AMS Slot", page)
+        self.assertIn("Replace Active Filament Spool", page)
+        self.assertIn("Receive Verified Sealed Spool", page)
+
+    def test_02c_future_workflows_are_visible_but_not_linked(self):
+        _, _, page = self.page("/")
+        self.assertIn("Receive Open Spool", page)
+        self.assertIn("Inventory Adjustments", page)
+        self.assertGreaterEqual(page.count('aria-disabled="true"'), 4)
+        self.assertNotIn('href="/inventory/filament/open-spool"', page)
+        self.assertNotIn('href="/inventory/adjustments"', page)
+
     def test_03_dashboard_displays_30_physical_spools(self):
         _, _, page = self.page("/")
         self.assertIn("Active physical spools", page)
