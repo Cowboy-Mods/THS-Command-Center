@@ -156,18 +156,17 @@ Before the first live replacement, use [Initialize Verified AMS State](INITIALIZ
 
 ## Filament identity versus AMS-reported identity
 
-The inventory catalog and physical `THS-FIL` instance remain the source of truth for what filament physically exists. Future RFID/AMS integration must store reported identity separately and must never rewrite the true manufacturer, product, material, or color merely because a reused tag reports a different Bambu profile.
+THS Inventory is the source of truth for manufacturer, product, material, color, physical spool status, and usage. AMS-reported data may supplement a record but must never overwrite verified THS identity.
 
-Future integration metadata must support:
+Keep RFID handling deliberately simple:
 
-- true inventory identity;
-- AMS-reported manufacturer, product, material, color, and profile;
-- RFID or tag identity and identification method;
-- manual-identity-override status;
-- original tag source when known;
-- a warning when the AMS-reported profile differs from verified filament identity.
+- an original Bambu RFID tag may be stored as an optional external identifier for the Bambu spool it originally accompanied;
+- do not design workflows around moving or reusing Bambu RFID tags on other brands;
+- enter non-Bambu filament manually in Bambu Studio and track it under its true identity in THS Inventory;
+- no custom THS RFID system is required at this stage;
+- barcode, QR, or RFID tagging for non-Bambu inventory remains a future optional enhancement.
 
-Example: an Overture White refill using a reused Bambu RFID tag remains an Overture inventory instance. The Bambu profile is an AMS observation, `reused RFID tag` is the identification method, and manual identity override is true.
+Cowboy temporarily transferred a Bambu RFID tag in a pinch, but that is historical operational contextâ€”not a supported inventory pattern. Future design should not require manual-override, transferred-tag-source, or cross-brand RFID modeling solely for that exception.
 
-Cowboy has ordered one bulk box expected to contain four Overture White refill rolls. Nothing is received until arrival, quantity, and condition are physically verified. If four acceptable refills arrive, receiving must create four individually tracked physical instances linked to one purchase or receiving batch. Purchase/receiving-batch modeling and RFID metadata are future requirements and are not added by the verified-AMS checkpoint.
+Cowboy has ordered one bulk box expected to contain four Overture White refill rolls. Nothing is received until arrival, quantity, and condition are physically verified. If four acceptable refills arrive, receiving must create four individually tracked physical instances linked to one purchase or receiving batch. Purchase/receiving-batch modeling is a future requirement and is not added by the verified-AMS checkpoint.
 
