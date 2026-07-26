@@ -46,4 +46,18 @@ material=TPU;manufacturer_color_name=Black;diameter_mm=1.75;nominal_weight_g=100
 
 Automated tests cover 30 spools, brand totals, 26,800 g, four Brown spools grouped under one product, 200 g AMOLEN rolls, unique permanent IDs, state grouping, nonnegative remaining grams, archive history, reservations, two four-slot AMS units, active assignment uniqueness, and load/unload history.
 
+## Read-only dashboard
+
+The first visible Filament Inventory interface is complete. It reads the migrated SQLite database and provides:
+
+- live dashboard totals;
+- 17 grouped filament products;
+- product pages with physical spool lists;
+- individual spool pages with transaction history;
+- two AMS units with eight verified-empty slots;
+- search by manufacturer, material, color, product line, THS-FIL ID, and notes;
+- state, manufacturer, material, and low-stock filters;
+- honest no-results and no-reorder-rule states.
+
+No inventory-changing controls or routes exist. Setup, startup, responsive behavior, routes, and current limitations are documented in [Read-Only Dashboard v1](READ_ONLY_DASHBOARD_V1.md).
 
