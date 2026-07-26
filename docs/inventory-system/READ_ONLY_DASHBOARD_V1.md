@@ -99,7 +99,7 @@ All checked pages avoided horizontal document scrolling at those normal viewport
 
 Normal dashboard, inventory, product, spool, AMS, search, filter, and placeholder routes remain read-only. They do not add, edit, import, reserve, consume, move, load, unload, archive, correct, or delete inventory.
 
-The only mutation routes are the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md) and [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md) confirmations. Their signed previews and explicit confirmations call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
+The only mutation routes are the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md), [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md), and [Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) confirmations. Their signed previews and explicit confirmations call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
 
 ## Tests
 
@@ -107,7 +107,7 @@ The only mutation routes are the purpose-built [Receive a Verified Sealed Spool]
 py -3 -m unittest discover -v
 ```
 
-The interface suite covers the 24 original dashboard acceptance scenarios, 14 receive-workflow scenarios, and 16 replacement-workflow scenarios in addition to the inventory/database and action-service suites.
+The interface suite covers the 24 original dashboard acceptance scenarios, 14 receive-workflow scenarios, 16 replacement-workflow scenarios, and 16 verified-AMS-initialization scenarios in addition to the inventory/database and action-service suites.
 
 ## Placeholder modules
 
@@ -116,7 +116,7 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 ## Known limitations
 
 - Local development server only; no authentication, permissions, TLS, or external hosting.
-- Two narrow workflows exist: receive one verified sealed spool and replace one active loaded spool.
+- Three narrow workflows exist: receive one verified sealed spool, replace one active loaded spool, and initialize one verified AMS assignment.
 - No general editing, remaining-weight editing, inventory correction, arbitrary AMS editing, or broad product management.
 - No live refresh or push notifications.
 - No Bambu, Maeve voice, RFID, NFC, barcode, or QR integration.
