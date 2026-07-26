@@ -6,6 +6,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from .actions import ActionContext, InventoryActionService
+
 
 def _truthy(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "verified"}
@@ -28,6 +30,10 @@ def import_csv(
     audit_rows: list[tuple[int, str | None, str, str | None, str]] = []
     with path.open(encoding="utf-8-sig", newline="") as source:
         rows = list(csv.DictReader(source))
+    actions = InventoryActionService(
+        db,
+        ActionContext(actor=f"importer:{path.name}", module="inventory-import", origin="importer"),
+    )
     try:
         db.execute("SAVEPOINT inventory_import")
         for number, row in enumerate(rows, 2):
@@ -86,60 +92,50 @@ def import_csv(
                 (number, external_id or None, "accepted" if apply else "validated", None, json.dumps(row))
             )
             if apply:
-                category = db.execute("SELECT id FROM categories WHERE name=?", (row["category"],)).fetchone()
-                if not category:
-                    category_id = db.execute(
-                        "INSERT INTO categories(name) VALUES (?)", (row["category"],)
-                    ).lastrowid
-                else:
-                    category_id = category["id"]
-                item_type = db.execute(
-                    "SELECT id,tracking_method FROM item_types WHERE name=?", (row["item_type"],)
-                ).fetchone()
-                if not item_type:
-                    item_type_id = db.execute(
-                        "INSERT INTO item_types(category_id,name,tracking_method,default_unit_id) VALUES (?,?,?,?)",
-                        (category_id, row["item_type"], tracking, unit["id"]),
-                    ).lastrowid
-                else:
-                    item_type_id = item_type["id"]
-                maker = db.execute("SELECT id FROM manufacturers WHERE name=?", (row["manufacturer"],)).fetchone()
-                maker_id = maker["id"] if maker else db.execute(
-                    "INSERT INTO manufacturers(name) VALUES (?)", (row["manufacturer"],)
-                ).lastrowid
-                key = (item_type_id, maker_id, row["product_name"], row.get("product_line",""), row.get("variant",""))
-                product = db.execute(
-                    "SELECT id FROM catalog_items WHERE item_type_id=? AND manufacturer_id=? "
-                    "AND name=? AND product_line=? AND variant=?", key
-                ).fetchone()
-                if product:
-                    product_id = product["id"]
+                category_id = actions.ensure_category(row["category"])
+                item_type_id = actions.ensure_item_type(
+                    category_id, row["item_type"], tracking, unit["id"]
+                )
+                maker_id = actions.ensure_manufacturer(row["manufacturer"])
+                product_id, created = actions.ensure_catalog_item(
+                    item_type_id,
+                    maker_id,
+                    row["product_name"],
+                    row.get("product_line", ""),
+                    row.get("variant", ""),
+                    unit["id"],
+                    row.get("notes"),
+                )
+                if not created:
                     warnings += 1
-                else:
-                    product_id = db.execute(
-                        "INSERT INTO catalog_items(item_type_id,manufacturer_id,name,product_line,variant,base_unit_id,notes) "
-                        "VALUES (?,?,?,?,?,?,?)", (*key, unit["id"], row.get("notes"))
-                    ).lastrowid
+                action_reason = f"Import batch {batch_id}, row {number}"
                 if tracking == "individual":
                     for _ in range(count):
-                        db.execute(
-                            "INSERT INTO inventory_instances(catalog_item_id,state,location_id,original_quantity,"
-                            "remaining_quantity,unit_id,verified) VALUES (?,?,?,?,?,?,1)",
-                            (product_id, row.get("state") or "sealed", location["id"], quantity, remaining, unit["id"]),
+                        actions.add_individual_instance(
+                            product_id,
+                            state=row.get("state") or "sealed",
+                            location_id=location["id"],
+                            original_quantity=quantity,
+                            remaining_quantity=remaining,
+                            unit_id=unit["id"],
+                            lot_number=row.get("lot_number") or None,
+                            condition=row.get("condition") or "new",
+                            expires_at=row.get("expiration_date") or None,
+                            notes=row.get("notes") or None,
+                            verified=True,
+                            reason=action_reason,
                         )
                 else:
-                    db.execute(
-                        "INSERT INTO stock_lots(catalog_item_id,location_id,lot_number,quantity,unit_id,"
-                        "condition,expires_at,verified) VALUES (?,?,?,?,?,?,?,1)",
-                        (
-                            product_id,
-                            location["id"],
-                            row.get("lot_number") or None,
-                            quantity,
-                            unit["id"],
-                            row.get("condition") or "new",
-                            row.get("expiration_date") or None,
-                        ),
+                    actions.add_stock_lot(
+                        product_id,
+                        location_id=location["id"],
+                        lot_number=row.get("lot_number") or None,
+                        quantity=quantity,
+                        unit_id=unit["id"],
+                        condition=row.get("condition") or "new",
+                        expires_at=row.get("expiration_date") or None,
+                        verified=True,
+                        reason=action_reason,
                     )
         if rejected:
             db.execute("ROLLBACK TO inventory_import")
