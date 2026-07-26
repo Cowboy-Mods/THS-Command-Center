@@ -358,6 +358,159 @@ class InventoryActionService:
 
         return self._atomic(work)
 
+    def mark_loaded_spool_empty(
+        self, instance_id: int, *, reason: str | None = None,
+        workflow_transaction_id: int | None = None,
+    ) -> int:
+        previous = self._instance(instance_id)
+        assignment = self.db.execute(
+            """SELECT aa.id,aa.slot_id,es.location_id FROM ams_assignments aa
+            JOIN equipment_slots es ON es.id=aa.slot_id
+            WHERE aa.instance_id=? AND aa.unloaded_at IS NULL""",
+            (instance_id,),
+        ).fetchone()
+        if previous["state"] != "loaded" or previous["archived_at"] or not assignment:
+            raise InventoryActionError("current spool must be actively loaded in an AMS")
+
+        def work():
+            tx = self._transaction(
+                "mark_empty", reason, previous["catalog_item_id"], previous["unit_id"],
+                -previous["remaining_quantity"], instance_id=instance_id,
+                source_location_id=assignment["location_id"],
+            )
+            self.db.execute(
+                "UPDATE ams_assignments SET unloaded_at=CURRENT_TIMESTAMP,unload_transaction_id=? "
+                "WHERE id=?", (tx, assignment["id"]),
+            )
+            self.db.execute(
+                """UPDATE inventory_instances SET state='empty',remaining_quantity=0,
+                emptied_at=CURRENT_TIMESTAMP,archived_at=CURRENT_TIMESTAMP,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (instance_id,),
+            )
+            new = self._instance(instance_id)
+            new["_vacated_ams_slot_id"] = assignment["slot_id"]
+            return self._audit(
+                "mark_spool_empty", "inventory_instance", instance_id,
+                previous["permanent_id"], previous, new, False, reason=reason,
+                transaction_id=tx, workflow_transaction_id=workflow_transaction_id,
+            )
+
+        return self._atomic(work)
+
+    def open_sealed_spool(
+        self, instance_id: int, *, reason: str | None = None,
+        workflow_transaction_id: int | None = None,
+    ) -> int:
+        previous = self._instance(instance_id)
+        if previous["state"] != "sealed" or previous["archived_at"]:
+            raise InventoryActionError("replacement spool must be sealed and active")
+        if self.db.execute(
+            "SELECT 1 FROM ams_assignments WHERE instance_id=? AND unloaded_at IS NULL",
+            (instance_id,),
+        ).fetchone():
+            raise InventoryActionError("sealed replacement cannot already occupy an AMS slot")
+
+        def work():
+            self.db.execute(
+                "UPDATE inventory_instances SET state='open',opened_at=CURRENT_TIMESTAMP,"
+                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (instance_id,),
+            )
+            new = self._instance(instance_id)
+            tx = self._transaction(
+                "correct", reason, previous["catalog_item_id"], previous["unit_id"], 0,
+                instance_id=instance_id, source_location_id=previous["location_id"],
+                destination_location_id=previous["location_id"],
+            )
+            return self._audit(
+                "open_sealed_spool", "inventory_instance", instance_id,
+                previous["permanent_id"], previous, new, True,
+                reverse_action="change_instance_state", reason=reason,
+                transaction_id=tx, workflow_transaction_id=workflow_transaction_id,
+            )
+
+        return self._atomic(work)
+
+    def replace_active_filament_spool(
+        self, current_instance_id: int, replacement_instance_id: int,
+        destination_slot_id: int, *, reason: str | None, review_nonce: str,
+    ) -> dict:
+        if current_instance_id == replacement_instance_id:
+            raise InventoryActionError("current and replacement spools must be different")
+        if not review_nonce.strip():
+            raise InventoryActionError("review nonce is required")
+        current = self._instance(current_instance_id)
+        replacement = self._instance(replacement_instance_id)
+        assignment = self.db.execute(
+            """SELECT aa.slot_id,e.name equipment_name,es.slot_number
+            FROM ams_assignments aa
+            JOIN equipment_slots es ON es.id=aa.slot_id
+            JOIN equipment e ON e.id=es.equipment_id
+            WHERE aa.instance_id=? AND aa.unloaded_at IS NULL""",
+            (current_instance_id,),
+        ).fetchone()
+        if current["state"] != "loaded" or current["archived_at"] or not assignment:
+            raise InventoryActionError("current spool must be actively loaded in an AMS")
+        if replacement["state"] != "sealed" or replacement["archived_at"]:
+            raise InventoryActionError("replacement spool must be sealed and active")
+        if self.db.execute(
+            "SELECT 1 FROM ams_assignments WHERE instance_id=? AND unloaded_at IS NULL",
+            (replacement_instance_id,),
+        ).fetchone():
+            raise InventoryActionError("replacement spool already occupies an AMS slot")
+        slot = self.db.execute(
+            """SELECT es.id,e.name equipment_name,es.slot_number
+            FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+            WHERE es.id=? AND e.equipment_type='AMS' AND e.archived_at IS NULL""",
+            (destination_slot_id,),
+        ).fetchone()
+        if not slot:
+            raise InventoryActionError("destination AMS slot not found")
+        occupant = self.db.execute(
+            "SELECT instance_id FROM ams_assignments WHERE slot_id=? AND unloaded_at IS NULL",
+            (destination_slot_id,),
+        ).fetchone()
+        if occupant and occupant["instance_id"] != current_instance_id:
+            raise InventoryActionError("destination AMS slot is occupied by another spool")
+
+        def work():
+            workflow_id = self.db.execute(
+                """INSERT INTO inventory_workflow_transactions(
+                workflow_uuid,review_nonce,workflow_type,actor,module,origin,reason,
+                current_instance_id,replacement_instance_id,destination_slot_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), review_nonce, "replace_active_filament_spool",
+                    self.context.actor, self.context.module, self.context.origin, reason,
+                    current_instance_id, replacement_instance_id, destination_slot_id,
+                ),
+            ).lastrowid
+            empty_action = self.mark_loaded_spool_empty(
+                current_instance_id, reason=reason,
+                workflow_transaction_id=workflow_id,
+            )
+            open_action = self.open_sealed_spool(
+                replacement_instance_id, reason=reason,
+                workflow_transaction_id=workflow_id,
+            )
+            load_action = self.load_instance_into_ams(
+                replacement_instance_id, destination_slot_id, reason=reason,
+                workflow_transaction_id=workflow_id,
+            )
+            return {
+                "workflow_transaction_id": workflow_id,
+                "empty_action_id": empty_action,
+                "open_action_id": open_action,
+                "load_action_id": load_action,
+                "source_slot_id": assignment["slot_id"],
+                "destination_slot_id": destination_slot_id,
+                "destination_equipment": slot["equipment_name"],
+                "destination_slot_number": slot["slot_number"],
+            }
+
+        return self._atomic(work)
+
     def create_instance_reservation(
         self, instance_id: int, quantity: float, *, project_ref: str | None = None,
         reason: str | None = None,
@@ -400,6 +553,7 @@ class InventoryActionService:
     def load_instance_into_ams(
         self, instance_id: int, slot_id: int, *, reason: str | None = None,
         reverses_action_id: int | None = None,
+        workflow_transaction_id: int | None = None,
     ) -> int:
         previous = self._instance(instance_id)
         slot = self.db.execute(
@@ -444,6 +598,7 @@ class InventoryActionService:
                 previous["permanent_id"], previous, new, True,
                 reverse_action="unload_instance_from_ams", reason=reason,
                 transaction_id=tx, reverses_action_id=reverses_action_id,
+                workflow_transaction_id=workflow_transaction_id,
             )
 
         return self._atomic(work)
@@ -618,17 +773,18 @@ class InventoryActionService:
         human_id: str | None, previous: dict | None, new: dict | None, reversible: bool,
         *, reverse_action: str | None = None, reason: str | None = None,
         transaction_id: int | None = None, reverses_action_id: int | None = None,
+        workflow_transaction_id: int | None = None,
     ) -> int:
         return self.db.execute(
             """INSERT INTO inventory_actions(action_uuid,actor,module,origin,action_type,reason,
             reversible,reverse_action,affected_entity_type,affected_entity_id,affected_human_id,
-            previous_state,new_state,transaction_id,reverses_action_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            previous_state,new_state,transaction_id,reverses_action_id,workflow_transaction_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
                 str(uuid.uuid4()), self.context.actor, self.context.module, self.context.origin,
                 action_type, reason, int(reversible), reverse_action, entity_type, entity_id,
                 human_id, self._json(previous), self._json(new), transaction_id,
-                reverses_action_id,
+                reverses_action_id, workflow_transaction_id,
             ),
         ).lastrowid
 
