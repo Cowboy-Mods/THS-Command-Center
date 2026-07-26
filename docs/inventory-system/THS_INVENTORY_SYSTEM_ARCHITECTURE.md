@@ -18,6 +18,14 @@ The repository contained documentation only. There was no application framework,
 
 This is deliberately small and Raspberry Pi friendly. A later web framework may call this layer without replacing the schema.
 
+## Read-only application interface
+
+The first visible interface uses Python's standard-library HTTP server, server-rendered HTML, plain responsive CSS, and modest JavaScript for mobile navigation. No UI dependency or frontend build chain is required.
+
+`inventory/queries.py` opens SQLite using read-only mode and provides reusable dashboard, grouped-product, product-detail, spool-detail, transaction-history, AMS, search, filter, and reorder queries. `inventory/navigation.py` defines module labels and routes as metadata so future user profiles can hide, rename, add, or reorganize modules.
+
+Functional routes are Dashboard, Filament Inventory, Filament Product Detail, Individual Spool Detail, and AMS Units. All other planned modules display an honest Coming Soon page. See [Read-Only Dashboard v1](READ_ONLY_DASHBOARD_V1.md) for startup, route, responsive, and testing details.
+
 ## Extensible core
 
 `categories` organize broad work areas. `item_types` define a tracking policy, default unit, and optional permanent-ID prefix. Both are rows created by configuration; adding "Bearing," "Servo," or "Leather Sheet" does not require a migration.
@@ -128,9 +136,9 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 
 ## Next milestones
 
-1. Cowboy and ChatGPT review this checkpoint and physical weight assumptions.
+1. Cowboy and ChatGPT review the read-only dashboard and physical weight assumptions.
 2. Add service methods that atomically move, load, unload, reserve, consume, and reconcile stock.
 3. Verify open-wall colors, grams, and rack positions through a staged import.
-4. Build the read-only grouped Filament Inventory interface only after checkpoint approval.
+4. Add the first deliberately scoped manual workflow only after checkpoint approval.
 5. Add project allocation and completion services, then optional Bambu integration.
 
