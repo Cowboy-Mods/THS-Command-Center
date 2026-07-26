@@ -143,7 +143,7 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         )
         for path in (
             "/", "/inventory/filament", "/inventory/filament/ams",
-            "/inventory/filament?q=Gold", "/modules/projects",
+            "/inventory/filament?q=Gold", "/modules/project-list",
         ):
             self.assertEqual(self.page(path)[0], 200)
         counts_after = (
@@ -203,5 +203,4 @@ class ReadOnlyDashboardTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 
