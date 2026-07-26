@@ -16,6 +16,10 @@ from .replacement import (
     ReplaceActiveFilamentSpoolWorkflow,
     ReplaceSpoolError,
 )
+from .initialization import (
+    InitializeAMSError,
+    InitializeVerifiedAMSStateWorkflow,
+)
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -42,6 +46,7 @@ class InventoryWebApp:
         self.queries = InventoryQueries(self.database)
         self.receiving = ReceiveSpoolWorkflow(self.database)
         self.replacement = ReplaceActiveFilamentSpoolWorkflow(self.database)
+        self.initialization = InitializeVerifiedAMSStateWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -59,6 +64,8 @@ class InventoryWebApp:
             body, status = self._receive_error(str(exc)), 422
         except ReplaceSpoolError as exc:
             body, status = self._replacement_error(str(exc)), 422
+        except InitializeAMSError as exc:
+            body, status = self._initialization_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -92,6 +99,16 @@ class InventoryWebApp:
                 raise ReplaceSpoolError("explicit replacement confirmation is required")
             return self._replacement_complete(
                 self.replacement.commit(form.get("review_token", ""))
+            ), 201
+        if method == "GET" and path == "/inventory/filament/ams/initialize":
+            return self._initialization_form(), 200
+        if method == "POST" and path == "/inventory/filament/ams/initialize/review":
+            return self._initialization_review(self.initialization.review(form)), 200
+        if method == "POST" and path == "/inventory/filament/ams/initialize/confirm":
+            if form.get("confirm") != "initialize":
+                raise InitializeAMSError("explicit initialization confirmation is required")
+            return self._initialization_complete(
+                self.initialization.commit(form.get("review_token", ""))
             ), 201
         if method != "GET":
             return self._method_not_allowed(), 405
@@ -128,7 +145,7 @@ class InventoryWebApp:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>{esc(title)} Â· THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=3">
+  <link rel="stylesheet" href="/static/style.css?v=4">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
@@ -503,6 +520,18 @@ class InventoryWebApp:
                 <input name="reason" maxlength="500"
                   placeholder="Project, print, or shop reason"></label>
             </div>
+            <details class="optional-fields"><summary>Optional print-event notes</summary>
+              <div class="form-grid">
+                <label><span>Print or job name</span><input name="print_job_name"
+                  maxlength="160" placeholder="Example: TweetyFixed"></label>
+                <label><span>Approximate layer</span><input name="approximate_layer"
+                  type="number" min="0" step="1" inputmode="numeric"></label>
+                <label><span>Printer</span><input name="printer" maxlength="120"></label>
+                <label><span>Plate</span><input name="plate" maxlength="120"></label>
+                <label class="wide-field"><span>Free-form operational note</span>
+                  <textarea name="operational_note" maxlength="1000" rows="3"></textarea></label>
+              </div>
+            </details>
           </fieldset>
           <div class="form-actions"><a href="/inventory/filament">Cancel</a>
             <button type="submit">Preview complete replacement</button></div>
@@ -545,6 +574,11 @@ class InventoryWebApp:
           <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div>
           <div><dt>Module</dt><dd>{esc(v["module"])}</dd></div>
           <div><dt>Purpose or reason</dt><dd>{display(v["reason"], "No reason provided")}</dd></div>
+          <div><dt>Print or job name</dt><dd>{display(v["print_job_name"])}</dd></div>
+          <div><dt>Approximate layer</dt><dd>{display(v["approximate_layer"])}</dd></div>
+          <div><dt>Printer</dt><dd>{display(v["printer"])}</dd></div>
+          <div><dt>Plate</dt><dd>{display(v["plate"])}</dd></div>
+          <div><dt>Operational note</dt><dd>{display(v["operational_note"])}</dd></div>
         </dl></section>
         <form class="confirm-form" method="post" action="/inventory/filament/replace/confirm">
           <input type="hidden" name="review_token" value="{esc(review.token)}">
@@ -578,6 +612,8 @@ class InventoryWebApp:
               Slot {destination["slot_number"]}</dd></div>
             <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
             <div><dt>Reason</dt><dd>{display(result["reason"], "No reason provided")}</dd></div>
+            <div><dt>Print or job name</dt><dd>{display(result["print_job_name"])}</dd></div>
+            <div><dt>Approximate layer</dt><dd>{display(result["approximate_layer"])}</dd></div>
           </dl></section>
           <section class="panel"><h2>Immutable history</h2><dl class="detail-list">
             <div><dt>Parent workflow transaction</dt>
@@ -605,6 +641,154 @@ class InventoryWebApp:
             "Spool replacement stopped", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             '<span aria-current="page">Replacement stopped</span>',
+        )
+
+    def _initialization_form(self) -> str:
+        data = self.initialization.options()
+        spools = "".join(
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'{esc(s["state"].title())}</option>' for s in data["spools"]
+        )
+        slots = "".join(
+            f'<option value="{slot["id"]}"'
+            f'{" disabled" if slot["occupant_instance_id"] is not None else ""}>'
+            f'{esc(slot["equipment_name"])} Slot {slot["slot_number"]}'
+            f'{" â€” occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " â€” empty"}'
+            f'</option>' for slot in data["slots"]
+        )
+        content = f"""
+        <div class="notice"><strong>Operational-readiness setup only</strong>
+          <p>This establishes one verified physical spool in one existing AMS slot.
+          It does not create inventory, edit weight, or provide general AMS management.</p></div>
+        <form class="receive-form initialization-form" method="post"
+          action="/inventory/filament/ams/initialize/review">
+          <fieldset><legend>1. Select the identified physical spool</legend>
+            <label><span>Eligible Sealed or Open spool</span><select name="instance_id" required>
+              <option value="">Select one positively identified THS-FIL spool</option>
+              {spools}</select></label>
+            <p class="field-help">Empty, archived, inactive, and already-assigned spools are excluded.</p>
+          </fieldset>
+          <fieldset><legend>2. Select the verified physical AMS slot</legend>
+            <label><span>AMS unit and slot</span><select name="slot_id" required>
+              <option value="">Select the slot you physically verified</option>{slots}</select></label>
+            <p class="field-help">Names and slot numbers come directly from configured equipment.</p>
+          </fieldset>
+          <fieldset><legend>3. Record when the loading actually occurred</legend>
+            <div class="form-grid">
+              <label><span>Effective workshop time</span><input type="datetime-local"
+                name="effective_at" value="{esc(self.initialization.default_effective_local())}"
+                required></label>
+              <label><span>Actor</span><input name="actor" value="Cowboy"
+                maxlength="100" required></label>
+              <label class="wide-field"><span>Reason or verification note (optional)</span>
+                <textarea name="reason" maxlength="500" rows="3"></textarea></label>
+            </div>
+            <label class="choice confirm-choice"><input type="checkbox"
+              name="confirm_verified" value="yes" required>
+              <span><strong>I physically verified this spool and AMS slot.</strong>
+              <small>If the spool is Sealed, confirmation records Open before Loaded.</small></span>
+            </label>
+          </fieldset>
+          <div class="form-actions"><a href="/inventory/filament/ams">Cancel</a>
+            <button type="submit">Preview verified AMS assignment</button></div>
+        </form>"""
+        return self._shell(
+            "Initialize Verified AMS State", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Initialize verified state</span>',
+            description="One identified spool, one physically verified slot, no invented history.",
+        )
+
+    def _initialization_review(self, review) -> str:
+        v, spool, slot = review.values, review.values["spool"], review.values["slot"]
+        transition = (
+            "Sealed â†’ Open â†’ Loaded" if spool["state"] == "sealed" else "Open â†’ Loaded"
+        )
+        content = f"""
+        <div class="notice"><strong>Preview only â€” zero writes</strong>
+          <p>Verify the permanent ID, configured AMS slot, state transition, and effective time.</p></div>
+        <section class="replacement-timeline initialization-preview"
+          aria-label="Verified AMS initialization preview">
+          <article><span class="step-number">1</span><div><p>Identified spool</p>
+            <h2>{esc(spool["permanent_id"])}</h2>
+            <span>{esc(spool["manufacturer"])} Â· {esc(spool["product_line"])} Â·
+              {esc(spool["color"])}</span><small>Current state: {esc(spool["state"].title())}</small>
+          </div></article>
+          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <article><span class="step-number">2</span><div><p>Controlled transition</p>
+            <h2>{esc(transition)}</h2><span>No spool weight change</span></div></article>
+          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <article><span class="step-number">3</span><div><p>Verified destination</p>
+            <h2>{esc(slot["equipment_name"])} Slot {slot["slot_number"]}</h2>
+            <span>Effective {esc(v["effective_local"])}</span></div></article>
+        </section>
+        <section class="panel review-panel"><h2>Audit context</h2><dl class="detail-list">
+          <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div>
+          <div><dt>Module</dt><dd>{esc(v["module"])}</dd></div>
+          <div><dt>Effective timestamp</dt><dd>{esc(v["effective_at"])}</dd></div>
+          <div><dt>Reason</dt><dd>{display(v["reason"], "No reason provided")}</dd></div>
+        </dl></section>
+        <form class="confirm-form" method="post"
+          action="/inventory/filament/ams/initialize/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice confirm-choice"><input type="checkbox" name="confirm"
+            value="initialize" required><span><strong>Initialize this exact verified assignment.</strong>
+            <small>The operation succeeds completely or saves nothing.</small></span></label>
+          <div class="form-actions"><a href="/inventory/filament/ams/initialize">
+            Go back without saving</a><button type="submit">Confirm verified AMS state</button></div>
+        </form>"""
+        return self._shell(
+            "Preview Verified AMS State", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Preview initialization</span>',
+        )
+
+    def _initialization_complete(self, result: dict) -> str:
+        spool, slot, assignment = result["spool"], result["slot"], result["assignment"]
+        open_record = (
+            f'#{result["open_action_id"]}' if result["open_action_id"] else "Not required â€” already Open"
+        )
+        content = f"""
+        <div class="success-panel"><p class="eyebrow">Verified AMS state initialized</p>
+          <h2>{esc(spool["permanent_id"])} is loaded</h2>
+          <p>{esc(slot["equipment_name"])} Slot {slot["slot_number"]} now matches the verified
+          physical state.</p></div>
+        <div class="detail-grid">
+          <section class="panel"><h2>Physical assignment</h2><dl class="detail-list">
+            <div><dt>Spool</dt><dd>{esc(spool["permanent_id"])}</dd></div>
+            <div><dt>AMS destination</dt><dd>{esc(slot["equipment_name"])}
+              Slot {slot["slot_number"]}</dd></div>
+            <div><dt>Effective timestamp</dt><dd>{esc(assignment["loaded_at"])}</dd></div>
+            <div><dt>Weight changed</dt><dd>No</dd></div>
+          </dl></section>
+          <section class="panel"><h2>Immutable history</h2><dl class="detail-list">
+            <div><dt>Open action</dt><dd>{open_record}</dd></div>
+            <div><dt>Load action</dt><dd>#{result["load_action_id"]}</dd></div>
+            <div><dt>Load transaction</dt><dd>#{assignment["load_transaction_id"]}</dd></div>
+            <div><dt>AMS assignment</dt><dd>#{assignment["id"]}</dd></div>
+          </dl></section>
+        </div>
+        <div class="form-actions"><a href="/inventory/filament/ams/initialize">
+          Initialize another verified slot</a>
+          <a class="primary-link" href="/inventory/filament/ams">View AMS Units</a></div>"""
+        return self._shell(
+            "Verified AMS Initialization Complete", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Initialization complete</span>',
+        )
+
+    def _initialization_error(self, message: str) -> str:
+        content = f"""<section class="empty-state"><p class="eyebrow">No changes saved</p>
+          <h2>AMS initialization stopped</h2><p>{esc(message)}</p>
+          <a class="primary-link" href="/inventory/filament/ams/initialize">
+            Start a fresh verified initialization</a></section>"""
+        return self._shell(
+            "AMS initialization stopped", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament/ams">AMS Units</a> / '
+            '<span aria-current="page">Initialization stopped</span>',
         )
 
     def _method_not_allowed(self) -> str:
@@ -740,7 +924,11 @@ class InventoryWebApp:
             units.append(f'<article class="ams-unit"><div class="product-title"><div><p class="eyebrow">Equipment</p>'
                          f'<h2>{esc(unit["name"])}</h2></div><span class="status neutral">Read only</span></div>'
                          f'<ol>{''.join(slots)}</ol></article>')
-        content = f'<div class="notice"><strong>Verified assignments only</strong><p>All current slots are empty. Stale assumptions were not imported.</p></div><section class="ams-grid">{"".join(units)}</section>'
+        content = f"""<div class="notice"><strong>Verified assignments only</strong>
+          <p>AMS slots show only committed physical assignments. Historical assumptions were not imported.</p>
+          <p><a class="primary-link" href="/inventory/filament/ams/initialize">
+            Initialize one verified AMS slot</a></p></div>
+          <section class="ams-grid">{"".join(units)}</section>"""
         return self._shell(
             "AMS Units", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
