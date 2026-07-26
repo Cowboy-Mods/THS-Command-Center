@@ -138,7 +138,7 @@ class PrintRegistryCheckpointTests(unittest.TestCase):
         for path, text in (
             ("/prints", "Print Registry"),
             ("/prints/complete", "Record Print Completion"),
-            ("/maintenance", "Maintenance Events"),
+            ("/maintenance", "Maintenance Backlog"),
             ("/projects", "Project Progress"),
             ("/audit", "Audit Mode"),
         ):

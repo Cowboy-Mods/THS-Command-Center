@@ -25,6 +25,7 @@ from .returning import ReturnSpoolError, ReturnSpoolToStorageWorkflow
 from .actions import ActionContext
 from .production import ProductionError, ProductionService
 from .open_spool import RegisterExistingOpenSpoolWorkflow, RegisterOpenSpoolError
+from .maintenance import MaintenanceError, MaintenanceWorkflow
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -55,6 +56,7 @@ class InventoryWebApp:
         self.order_receiving = OrderReceiptWorkflow(self.database)
         self.returning = ReturnSpoolToStorageWorkflow(self.database)
         self.open_spool = RegisterExistingOpenSpoolWorkflow(self.database)
+        self.maintenance = MaintenanceWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -82,6 +84,8 @@ class InventoryWebApp:
             body, status = self._production_error(str(exc)), 422
         except RegisterOpenSpoolError as exc:
             body, status = self._open_spool_error(str(exc)), 422
+        except MaintenanceError as exc:
+            body, status = self._maintenance_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -158,10 +162,20 @@ class InventoryWebApp:
             if form.get("confirm") != "complete-print":
                 raise ProductionError("explicit print completion confirmation is required")
             return self._print_complete(form), 201
-        if method == "POST" and path == "/maintenance/log":
-            if form.get("confirm") != "log-maintenance":
-                raise ProductionError("explicit maintenance confirmation is required")
-            return self._maintenance_complete(form), 201
+        if method == "POST" and path == "/maintenance/review":
+            return self._maintenance_review(
+                self.maintenance.review(form.get("action", ""), form)
+            ), 200
+        if method == "POST" and path == "/maintenance/confirm":
+            if form.get("confirm") != "maintenance-write":
+                raise MaintenanceError("explicit maintenance confirmation is required")
+            return self._maintenance_complete(
+                self.maintenance.commit(form.get("review_token", ""))
+            ), 201
+        if method == "POST" and path == "/maintenance/evidence":
+            if form.get("confirm") != "maintenance-evidence":
+                raise MaintenanceError("explicit evidence confirmation is required")
+            return self._maintenance_evidence_complete(form), 201
         if method != "GET":
             return self._method_not_allowed(), 405
         if path == "/":
@@ -178,6 +192,12 @@ class InventoryWebApp:
             return self._print_completion_form(), 200
         if path == "/maintenance":
             return self._maintenance(), 200
+        if path == "/maintenance/action":
+            values = {key: rows[0] for key, rows in query.items() if rows}
+            return self._maintenance_form(values), 200
+        if path == "/maintenance/evidence":
+            values = {key: rows[0] for key, rows in query.items() if rows}
+            return self._maintenance_evidence_form(values), 200
         if path == "/audit":
             return self._audit_mode(), 200
         if path == "/projects":
@@ -441,7 +461,7 @@ class InventoryWebApp:
             '<a href="/">Dashboard</a> / <a href="/prints">Print Registry</a> / Recorded',
         )
 
-    def _maintenance(self) -> str:
+    def _legacy_maintenance(self) -> str:
         with closing(connect(self.database)) as db:
             rows = db.execute(
                 """SELECT me.*,p.name printer_name,pr.print_number
@@ -478,7 +498,7 @@ class InventoryWebApp:
             '<a href="/">Dashboard</a> / Maintenance',
         )
 
-    def _maintenance_complete(self, form: dict[str, str]) -> str:
+    def _legacy_maintenance_complete(self, form: dict[str, str]) -> str:
         printer = str(form.get("printer_id", "")).strip()
         result = self._production_service(
             form.get("actor", ""), "maintenance-ui"
@@ -495,6 +515,190 @@ class InventoryWebApp:
             <a class="primary-link" href="/maintenance">View maintenance history</a></section>""",
             '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Recorded',
         )
+
+    def _maintenance(self) -> str:
+        backlog = MaintenanceWorkflow.backlog(self.database)
+
+        def cards(rows):
+            return "".join(
+                f"""<article class="order-card"><p class="eyebrow">{esc(r["event_number"])}</p>
+                <h2>{esc(r["display_name"])}</h2><p>{esc(r["symptoms"])}</p>
+                <p><strong>{esc(r["status"].replace("_", " ").title())}</strong> ·
+                {esc(r["severity"].replace("_", " ").title())} ·
+                {r["evidence_count"]} evidence file(s)</p>
+                <a href="/maintenance/action?action=complete_maintenance&id={r["id"]}">Update task</a>
+                </article>""" for r in rows
+            ) or "<p>No records in this section.</p>"
+
+        assets = "".join(
+            f"""<tr><td>{esc(r["display_name"])}</td>
+            <td>{esc(r["asset_type"].replace("_", " ").title())}</td>
+            <td>{esc(r["readiness_state"].replace("_", " ").title())}</td></tr>"""
+            for r in backlog["assets"]
+        )
+        return self._shell(
+            "Maintenance Backlog",
+            f"""<section class="page-heading"><div><p class="eyebrow">Permanent registry</p>
+            <h1>Maintenance Backlog</h1><p>Equipment readiness, open work, blocked work,
+            overdue tasks, and permanent repair history.</p></div></section>
+            <section class="panel"><h2>Controlled workflows</h2><div class="form-actions">
+            <a class="primary-link" href="/maintenance/action?action=record_fault">Record Fault Discovered</a>
+            <a href="/maintenance/action?action=create_task">Create Maintenance Task</a></div></section>
+            <section><h2>Open tasks</h2><div class="order-list">{cards(backlog["open"])}</div></section>
+            <section><h2>Blocked tasks</h2><div class="order-list">{cards(backlog["blocked"])}</div></section>
+            <section><h2>Overdue tasks</h2><div class="order-list">{cards(backlog["overdue"])}</div></section>
+            <section><h2>Completed history</h2><div class="order-list">{cards(backlog["completed"])}</div></section>
+            <section class="panel table-panel"><h2>Equipment status</h2><table><thead>
+            <tr><th>Equipment</th><th>Type</th><th>Readiness</th></tr></thead>
+            <tbody>{assets}</tbody></table></section>""",
+            '<a href="/">Dashboard</a> / Maintenance',
+        )
+
+    def _maintenance_form(self, query: dict[str, str]) -> str:
+        action = query.get("action", "record_fault")
+        if action not in MaintenanceWorkflow.ACTION_TARGETS:
+            raise MaintenanceError("unsupported maintenance workflow")
+        record_id = query.get("id", "")
+        options = self.maintenance.options()
+        assets = "".join(
+            f'<option value="{r["id"]}">{esc(r["display_name"])}</option>'
+            for r in options["assets"]
+        )
+        prints = '<option value="">Not linked</option>' + "".join(
+            f'<option value="{r["id"]}">{esc(r["print_number"])} · {esc(r["part_name"])}</option>'
+            for r in options["prints"]
+        )
+        if action in {"record_fault", "create_task"}:
+            event_types = "".join(
+                f'<option value="{v}"'
+                f'{" selected" if action == "record_fault" and v == "fault_discovered" else ""}>'
+                f'{v.replace("_", " ").title()}</option>'
+                for v in sorted(MaintenanceWorkflow.EVENT_TYPES)
+            )
+            severities = "".join(
+                f'<option value="{v}">{v.replace("_", " ").title()}</option>'
+                for v in sorted(MaintenanceWorkflow.SEVERITIES)
+            )
+            fields = f"""<label><span>Equipment / printer</span><select name="asset_id"
+            required>{assets}</select></label><label><span>Event type</span>
+            <select name="event_type">{event_types}</select></label>
+            <label><span>Severity</span><select name="severity">{severities}</select></label>
+            <label><span>Discovered at (RFC3339)</span><input name="discovered_at" required></label>
+            <label><span>Due at (optional RFC3339)</span><input name="due_at"></label>
+            <label><span>Symptoms</span><textarea name="symptoms" required></textarea></label>
+            <label><span>Likely cause</span><textarea name="likely_cause"></textarea></label>
+            <label><span>Corrective action</span><textarea name="corrective_action"></textarea></label>
+            <label><span>Parts required</span><textarea name="parts_required"></textarea></label>
+            <label><span>Parts used</span><textarea name="parts_used"></textarea></label>
+            <label><span>Related print</span><select name="related_print_id">{prints}</select></label>
+            <label><span>Notes</span><textarea name="notes"></textarea></label>"""
+            workflow_links = ""
+        else:
+            fields = f"""<input type="hidden" name="record_id" value="{esc(record_id)}">
+            <label><span>Reason / work performed</span><textarea name="reason" required></textarea></label>
+            <label><span>Parts required</span><textarea name="parts_required"></textarea></label>
+            <label><span>Parts used</span><textarea name="parts_used"></textarea></label>
+            <label><span>Corrective action</span><textarea name="corrective_action"></textarea></label>
+            <label><span>Completed at (required for completion/verification)</span>
+            <input name="completed_at"></label>"""
+            workflow_links = f"""<div class="form-actions">
+            <a href="/maintenance/action?action=mark_waiting_for_part&id={esc(record_id)}">Mark Waiting for Part</a>
+            <a href="/maintenance/action?action=complete_maintenance&id={esc(record_id)}">Complete Maintenance</a>
+            <a href="/maintenance/action?action=verify_repair&id={esc(record_id)}">Verify Repair</a>
+            <a href="/maintenance/action?action=reopen_task&id={esc(record_id)}">Reopen Maintenance Task</a></div>"""
+        readiness = "".join(
+            f'<option value="{v}">{v.replace("_", " ").title()}</option>'
+            for v in sorted(MaintenanceWorkflow.READINESS)
+        )
+        return self._shell(
+            action.replace("_", " ").title(),
+            f"""<section class="page-heading"><div><p class="eyebrow">Controlled workflow</p>
+            <h1>{esc(action.replace("_", " ").title())}</h1>
+            <p>This page creates a zero-write preview before permanent commit.</p></div></section>
+            {workflow_links}<section class="panel"><form class="receive-form" method="post"
+            action="/maintenance/review"><input type="hidden" name="action" value="{esc(action)}">
+            {fields}<label><span>Equipment readiness</span><select name="readiness_state">
+            {readiness}</select></label><label class="choice"><input type="checkbox"
+            name="unattended_printing_allowed" value="yes"><span>Unattended printing is allowed</span></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy" required></label>
+            <button type="submit">Review maintenance change</button></form></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Workflow',
+        )
+
+    def _maintenance_review(self, review: dict) -> str:
+        values = review["values"]
+        summary = "".join(
+            f"<div><dt>{esc(k.replace('_', ' ').title())}</dt><dd>{display(v)}</dd></div>"
+            for k, v in values.items()
+            if k not in {"version", "module", "reviewed_at", "request_nonce", "actor"}
+        )
+        return self._shell(
+            "Review Maintenance Change",
+            f"""<section class="page-heading"><div><p class="eyebrow">Zero-write preview</p>
+            <h1>Review Maintenance Change</h1><p>No production data has been written yet.</p></div></section>
+            <section class="panel"><dl class="detail-list">{summary}</dl>
+            <form method="post" action="/maintenance/confirm">
+            <input type="hidden" name="review_token" value="{esc(review["token"])}">
+            <label class="confirmation"><input type="checkbox" name="confirm"
+            value="maintenance-write" required><span>I approve this permanent maintenance
+            registry write and immutable audit entry.</span></label>
+            <button type="submit">Commit maintenance change</button></form></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Review',
+        )
+
+    def _maintenance_complete(self, result: dict) -> str:
+        return self._shell(
+            "Maintenance Recorded",
+            f"""<section class="success-panel"><p class="eyebrow">Committed</p>
+            <h1>{esc(result["event_number"])}</h1><p>The maintenance change and immutable
+            history entry #{result["history_id"]} were committed atomically.</p>
+            <a class="primary-link" href="/maintenance">View maintenance history</a></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Recorded',
+        )
+
+    def _maintenance_evidence_form(self, query: dict[str, str]) -> str:
+        return self._shell(
+            "Add Maintenance Evidence",
+            f"""<section class="page-heading"><div><p class="eyebrow">SHA-256 evidence</p>
+            <h1>Add Maintenance Evidence</h1><p>The original file stays in place; the registry
+            stores its absolute path and cryptographic fingerprint.</p></div></section>
+            <section class="panel"><form class="receive-form" method="post"
+            action="/maintenance/evidence"><label><span>Maintenance record ID</span>
+            <input name="record_id" type="number" min="1" value="{esc(query.get("id", ""))}" required></label>
+            <label><span>Evidence type</span><select name="evidence_type">
+            <option value="photo">Photo</option><option value="video">Video</option></select></label>
+            <label><span>Absolute file path</span><input name="file_path" required></label>
+            <label><span>Caption</span><input name="caption"></label>
+            <label><span>Captured at (optional RFC3339)</span><input name="captured_at"></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy" required></label>
+            <label class="confirmation"><input type="checkbox" name="confirm"
+            value="maintenance-evidence" required><span>I verified this file and approve
+            permanent SHA-256 evidence registration.</span></label>
+            <button type="submit">Register evidence</button></form></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Evidence',
+        )
+
+    def _maintenance_evidence_complete(self, form: dict[str, str]) -> str:
+        try:
+            record_id = int(form.get("record_id", ""))
+        except (TypeError, ValueError) as exc:
+            raise MaintenanceError("maintenance record ID is invalid") from exc
+        result = self.maintenance.add_evidence(
+            record_id, evidence_type=form.get("evidence_type", ""),
+            file_path=form.get("file_path", ""), actor=form.get("actor", ""),
+            caption=form.get("caption"), captured_at=form.get("captured_at") or None,
+        )
+        return self._shell(
+            "Maintenance Evidence Recorded",
+            f"""<section class="success-panel"><p class="eyebrow">Committed</p>
+            <h1>{esc(result["event_number"])}</h1><p>Evidence #{result["id"]} was registered
+            with SHA-256 {esc(result["sha256"])}.</p>
+            <a class="primary-link" href="/maintenance">Return to backlog</a></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Evidence recorded',
+        )
+
+    def _maintenance_error(self, message: str) -> str:
+        return self._error_page("Maintenance workflow stopped", message, status="Not recorded")
 
     def _projects(self) -> str:
         with closing(connect(self.database)) as db:
