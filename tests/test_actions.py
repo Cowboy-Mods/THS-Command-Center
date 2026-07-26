@@ -228,6 +228,7 @@ class InventoryActionServiceTests(unittest.TestCase):
     def test_13_ams_load_unload_and_reversal_remain_consistent(self):
         slot = self.scalar("SELECT id FROM equipment_slots ORDER BY id LIMIT 1")
         wall = self.scalar("SELECT id FROM locations WHERE name='Open-Spool Wall'")
+        self.actions.open_sealed_spool(1, reason="Verified opening")
         load_action = self.actions.load_instance_into_ams(1, slot, reason="Verified load")
         row = self.db.execute(
             "SELECT state,location_id FROM inventory_instances WHERE id=1"
@@ -322,5 +323,4 @@ class InventoryActionServiceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 
