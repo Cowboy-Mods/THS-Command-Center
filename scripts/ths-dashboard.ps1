@@ -14,6 +14,8 @@ $databasePath = [System.IO.Path]::GetFullPath($DatabasePath)
 $runtimePath = Join-Path (Split-Path -Parent $databasePath) "runtime"
 $pidFile = Join-Path $runtimePath "ths-dashboard.json"
 $dashboardUrl = "http://127.0.0.1:8787"
+$expectedApplicationPath = Join-Path $projectPath "inventory\__init__.py"
+$bootstrapPath = Join-Path $projectPath "scripts\ths_dashboard_bootstrap.py"
 
 function Get-THSPython {
     if ($env:THS_PYTHON) {
@@ -78,7 +80,15 @@ function Get-VerifiedTHSProcess {
     $sameDatabase = (
         [System.IO.Path]::GetFullPath([string]$Record.DatabasePath) -eq $databasePath
     )
-    if (-not ($sameExecutable -and $sameStart -and $sameProject -and $sameDatabase)) {
+    $sameApplication = (
+        $Record.ApplicationPath -and
+        [System.IO.Path]::GetFullPath([string]$Record.ApplicationPath) -eq
+        [System.IO.Path]::GetFullPath($expectedApplicationPath)
+    )
+    if (-not (
+        $sameExecutable -and $sameStart -and $sameProject -and
+        $sameDatabase -and $sameApplication
+    )) {
         throw "Safety check failed: the recorded PID is not the exact THS Dashboard process."
     }
     return $process
@@ -129,20 +139,29 @@ if ($Action -eq "stop") {
 if (-not (Test-Path -LiteralPath $databasePath -PathType Leaf)) {
     throw "THS Inventory database was not found: $databasePath"
 }
+$existingListener = Get-NetTCPConnection -LocalPort 8787 -State Listen -ErrorAction SilentlyContinue
+if ($existingListener) {
+    $owners = @($existingListener | Select-Object -ExpandProperty OwningProcess -Unique)
+    throw "THS Dashboard cannot start: port 8787 is already owned by process(es) $($owners -join ', ')."
+}
 New-Item -ItemType Directory -Path $runtimePath -Force | Out-Null
 Remove-StaleTHSRecord
 $python = Get-THSPython
+if (-not (Test-Path -LiteralPath $bootstrapPath -PathType Leaf)) {
+    throw "THS launcher bootstrap was not found: $bootstrapPath"
+}
 
 Push-Location $projectPath
 try {
     Write-Host "Preparing the THS Inventory database..."
-    & $python.FilePath @($python.PrefixArguments) -m inventory.cli --database $databasePath migrate
+    & $python.FilePath @($python.PrefixArguments) -I $bootstrapPath --database $databasePath migrate
     if ($LASTEXITCODE -ne 0) {
         throw "Database migration failed with exit code $LASTEXITCODE."
     }
 
     $serverArguments = @($python.PrefixArguments) +
-        @("-m", "inventory.cli", "--database", $databasePath, "serve", "--host", "127.0.0.1", "--port", "8787")
+        @("-I", $bootstrapPath, "--database", $databasePath,
+          "serve", "--host", "127.0.0.1", "--port", "8787")
     $server = Start-Process -FilePath $python.FilePath -ArgumentList $serverArguments `
         -WorkingDirectory $projectPath -NoNewWindow -PassThru
     $record = [ordered]@{
@@ -151,6 +170,7 @@ try {
         ExecutablePath = $server.Path
         ProjectPath = $projectPath
         DatabasePath = $databasePath
+        ApplicationPath = $expectedApplicationPath
         Url = $dashboardUrl
     }
     $record | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
@@ -164,7 +184,10 @@ try {
         }
         try {
             $response = Invoke-WebRequest -UseBasicParsing -Uri $dashboardUrl -TimeoutSec 1
-            if ($response.StatusCode -ge 200) {
+            $listener = Get-NetTCPConnection -LocalPort 8787 -State Listen `
+                -ErrorAction SilentlyContinue |
+                Where-Object { $_.OwningProcess -eq $server.Id }
+            if ($response.StatusCode -ge 200 -and $listener) {
                 $ready = $true
                 break
             }

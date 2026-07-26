@@ -1,6 +1,8 @@
 import sqlite3
 import tempfile
 import unittest
+import base64
+import json
 from pathlib import Path
 
 from inventory.db import connect, migrate
@@ -42,6 +44,7 @@ class MaintenanceRegistryTests(unittest.TestCase):
         values = {
             "asset_id": str(self.asset_id),
             "event_type": "repair",
+            "initial_status": "pending",
             "severity": "high",
             "discovered_at": "2026-07-26T09:05:00-04:00",
             "due_at": "2026-07-27T09:05:00-04:00",
@@ -189,7 +192,47 @@ class MaintenanceRegistryTests(unittest.TestCase):
         self.assertEqual(row["unattended_printing_allowed"], 0)
         self.assertEqual(result["action"], "record_fault")
 
-    def test_08_history_identity_and_evidence_are_immutable(self):
+    def test_08_fault_can_preview_and_commit_pending_initial_status(self):
+        review = self.workflow.review(
+            "record_fault",
+            self.form(event_type="fault_discovered", initial_status="pending"),
+        )
+        self.assertEqual(review["values"]["status"], "pending")
+        result = self.workflow.commit(review["token"])
+        self.assertEqual(result["status"], "pending")
+        self.assertEqual(
+            self.scalar("SELECT new_status FROM maintenance_history"), "pending"
+        )
+
+    def test_09_fault_can_preview_and_commit_in_progress_initial_status(self):
+        review = self.workflow.review(
+            "record_fault",
+            self.form(event_type="fault_discovered", initial_status="in_progress"),
+        )
+        self.assertEqual(review["values"]["status"], "in_progress")
+        result = self.workflow.commit(review["token"])
+        self.assertEqual(result["status"], "in_progress")
+        self.assertEqual(
+            self.scalar("SELECT new_status FROM maintenance_history"), "in_progress"
+        )
+
+    def test_10_signed_preview_rejects_status_tampering_before_commit(self):
+        review = self.workflow.review(
+            "record_fault",
+            self.form(event_type="fault_discovered", initial_status="pending"),
+        )
+        body_text, signature = review["token"].split(".", 1)
+        body = base64.urlsafe_b64decode(body_text + "=" * (-len(body_text) % 4))
+        values = json.loads(body)
+        values["status"] = "in_progress"
+        forged_body = base64.urlsafe_b64encode(
+            json.dumps(values, sort_keys=True, separators=(",", ":")).encode()
+        ).rstrip(b"=").decode()
+        with self.assertRaisesRegex(MaintenanceError, "preview is invalid"):
+            self.workflow.commit(forged_body + "." + signature)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM maintenance_records"), 0)
+
+    def test_11_history_identity_and_evidence_are_immutable(self):
         record = self.create()
         photo = Path(self.temp.name) / "wiper.jpg"
         photo.write_bytes(b"maintenance evidence")
@@ -211,7 +254,7 @@ class MaintenanceRegistryTests(unittest.TestCase):
             db.rollback()
         db.close()
 
-    def test_09_completed_details_cannot_be_silently_edited(self):
+    def test_12_completed_details_cannot_be_silently_edited(self):
         record = self.create()
         self.workflow.commit(self.workflow.review(
             "complete_maintenance",
@@ -227,14 +270,14 @@ class MaintenanceRegistryTests(unittest.TestCase):
             )
         db.close()
 
-    def test_10_replay_protection_prevents_duplicate_write(self):
+    def test_13_replay_protection_prevents_duplicate_write(self):
         review = self.workflow.review("create_task", self.form())
         self.workflow.commit(review["token"])
         with self.assertRaisesRegex(MaintenanceError, "already used"):
             self.workflow.commit(review["token"])
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM maintenance_records"), 1)
 
-    def test_11_backlog_and_all_controlled_workflow_pages_are_available(self):
+    def test_14_backlog_and_all_controlled_workflow_pages_are_available(self):
         self.create(due_at="2020-01-01T00:00:00-05:00")
         backlog = MaintenanceWorkflow.backlog(self.database)
         self.assertEqual(len(backlog["open"]), 1)
@@ -256,7 +299,7 @@ class MaintenanceRegistryTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertIn("Controlled workflow", body.decode())
 
-    def test_12_web_review_requires_explicit_confirmation(self):
+    def test_15_web_review_requires_explicit_confirmation(self):
         app = InventoryWebApp(self.database)
         values = self.form(event_type="fault_discovered")
         values["action"] = "record_fault"
@@ -273,6 +316,20 @@ class MaintenanceRegistryTests(unittest.TestCase):
             form={"review_token": token, "confirm": ""},
         )
         self.assertEqual(status, 422)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM maintenance_records"), 0)
+
+    def test_16_web_preview_displays_selected_in_progress_status(self):
+        app = InventoryWebApp(self.database)
+        values = self.form(
+            event_type="fault_discovered", initial_status="in_progress"
+        )
+        values["action"] = "record_fault"
+        status, _, preview = app.response(
+            "/maintenance/review", method="POST", form=values
+        )
+        self.assertEqual(status, 200)
+        page = preview.decode()
+        self.assertIn("<dd>In Progress</dd>", page)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM maintenance_records"), 0)
 
 

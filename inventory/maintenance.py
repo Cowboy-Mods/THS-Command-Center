@@ -199,11 +199,17 @@ class MaintenanceWorkflow:
             raise MaintenanceError("related print record not found")
         symptoms = self._text(form, "symptoms", 4000)
         parts_required = self._optional(form, "parts_required", 2000)
+        initial_status = "pending"
+        if action == "record_fault":
+            initial_status = str(form.get("initial_status", "pending")).strip()
+            if initial_status not in {"pending", "in_progress"}:
+                raise MaintenanceError("fault status must be pending or in progress")
         return {
             "record_id": None, "asset_id": asset_id, "asset_name": asset["display_name"],
             "asset_readiness_before": asset["readiness_state"],
             "event_number": self._next_number(db), "event_type": event_type,
-            "status": "pending", "severity": severity, "discovered_at": discovered_at,
+            "status": initial_status, "severity": severity,
+            "discovered_at": discovered_at,
             "due_at": due_at, "symptoms": symptoms,
             "likely_cause": self._optional(form, "likely_cause", 4000),
             "corrective_action": self._optional(form, "corrective_action", 4000),

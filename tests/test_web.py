@@ -224,6 +224,18 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         self.assertEqual(inventory.count("No reorder rule set"), 18)
         self.assertNotIn(">Low stock<", inventory)
 
+    def test_25_canonical_ams_swatch_colors_and_unknown_fallback(self):
+        expected = {
+            "Red": "#d32f2f",
+            "Black": "#24262a",
+            "Orange": "#ff7a18",
+            "Jade White": "#f4f4f0",
+            "Not A Known Color": "#777d86",
+        }
+        for color, value in expected.items():
+            with self.subTest(color=color):
+                self.assertEqual(self.app._swatch(color), value)
+
 
 if __name__ == "__main__":
     unittest.main()

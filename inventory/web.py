@@ -579,9 +579,16 @@ class InventoryWebApp:
                 f'<option value="{v}">{v.replace("_", " ").title()}</option>'
                 for v in sorted(MaintenanceWorkflow.SEVERITIES)
             )
+            initial_status = (
+                """<label><span>Initial status</span><select name="initial_status">
+                <option value="pending" selected>Pending</option>
+                <option value="in_progress">In progress</option></select></label>"""
+                if action == "record_fault" else ""
+            )
             fields = f"""<label><span>Equipment / printer</span><select name="asset_id"
             required>{assets}</select></label><label><span>Event type</span>
             <select name="event_type">{event_types}</select></label>
+            {initial_status}
             <label><span>Severity</span><select name="severity">{severities}</select></label>
             <label><span>Discovered at (RFC3339)</span><input name="discovered_at" required></label>
             <label><span>Due at (optional RFC3339)</span><input name="due_at"></label>
@@ -627,8 +634,11 @@ class InventoryWebApp:
 
     def _maintenance_review(self, review: dict) -> str:
         values = review["values"]
+        labels = {"action", "event_type", "status", "severity", "readiness_state"}
         summary = "".join(
-            f"<div><dt>{esc(k.replace('_', ' ').title())}</dt><dd>{display(v)}</dd></div>"
+            f"<div><dt>{esc(k.replace('_', ' ').title())}</dt><dd>"
+            f"{display(v.replace('_', ' ').title() if k in labels and isinstance(v, str) else v)}"
+            f"</dd></div>"
             for k, v in values.items()
             if k not in {"version", "module", "reviewed_at", "request_nonce", "actor"}
         )
@@ -997,7 +1007,8 @@ class InventoryWebApp:
     @staticmethod
     def _swatch(color) -> str:
         return {
-            "white": "#f4f4f0", "orange": "#ff7a18", "black": "#24262a",
+            "white": "#f4f4f0", "jade white": "#f4f4f0",
+            "orange": "#ff7a18", "red": "#d32f2f", "black": "#24262a",
             "blue": "#2878d0", "cobalt blue": "#2454a6", "brown": "#79533a",
             "gray": "#8a9098", "dark gray": "#4b5057", "pink": "#ef8cab",
             "gold": "#d5a72e", "turquoise": "#27b8b2", "bambu green": "#00ae42",

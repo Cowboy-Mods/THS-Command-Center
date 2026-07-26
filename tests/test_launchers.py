@@ -29,14 +29,33 @@ class PermanentDashboardLauncherTests(unittest.TestCase):
             "ExecutablePath",
             "ProjectPath",
             "DatabasePath",
+            "ApplicationPath",
             "Get-VerifiedTHSProcess",
             "Stop-Process -Id $process.Id",
-            '"--database", $databasePath, "serve"',
-            "-m inventory.cli --database $databasePath migrate",
+            '"serve", "--host", "127.0.0.1", "--port", "8787"',
+            "-I $bootstrapPath --database $databasePath migrate",
+            "ths_dashboard_bootstrap.py",
+            "port 8787 is already owned by process",
+            "Where-Object { $_.OwningProcess -eq $server.Id }",
         ):
             self.assertIn(required, text)
+        self.assertNotIn("-m inventory.cli", text)
         self.assertNotIn("\\Documents\\Codex\\", text)
         self.assertNotIn('Join-Path $projectPath "var"', text)
+
+    def test_isolated_bootstrap_pins_inventory_to_this_checkout(self):
+        text = (ROOT / "scripts" / "ths_dashboard_bootstrap.py").read_text(
+            encoding="utf-8"
+        )
+        for required in (
+            "Path(__file__).resolve().parents[1]",
+            "sys.path.insert(0, str(project_root))",
+            "loaded_application != expected_application",
+            "THS launcher safety check failed",
+            "THS application path:",
+            "from inventory.cli import main",
+        ):
+            self.assertIn(required, text)
 
     def test_launcher_supports_explicit_and_discovered_python(self):
         text = (ROOT / "scripts" / "ths-dashboard.ps1").read_text(encoding="utf-8")
