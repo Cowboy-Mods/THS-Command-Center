@@ -26,11 +26,25 @@ This is deliberately small and Raspberry Pi friendly. A later web framework may 
 
 ## Tracking modes
 
-- `quantity`: pooled count or measure in `stock_lots`, suitable for screws and connectors.
-- `individual`: one row per physical asset in `inventory_instances`, suitable for spools, printers, and tools.
-- `lot`: measured stock in `stock_lots` with batch, condition, and expiration metadata.
+- `individual`: one row per physical asset in `inventory_instances`, suitable for filament spools, printers, Raspberry Pis, power tools, and serialized electronics.
+- `quantity`: pooled count or measure in `stock_lots`, suitable for screws, bearings, connectors, magnets, and rivets. Individual IDs are not required.
+- `lot`: partial measured stock in `stock_lots`, with optional batch number, condition, and expiration, suitable for resin, adhesives, paint, leather, and chemicals.
 
-Partial quantities use the item type's compatible unit. A bulk item does not receive a THS asset ID. An individually tracked item may receive a permanent, unique, immutable ID.
+The policy is an explicit, required `item_types.tracking_method` value. SQLite limits it to `individual`, `quantity`, or `lot`; it is never inferred from which stock rows happen to exist.
+
+Migration `004_enforce_tracking_policies.sql` enforces the storage choice:
+
+- ordinary `inventory_instances` inserts require an `individual` item type;
+- ordinary `stock_lots` inserts require a `quantity` or `lot` item type;
+- changing an item type's policy is rejected when existing non-override stock conflicts;
+- an exceptional cross-policy row requires `tracking_policy_override=1` on that exact row;
+- imports cannot set the override and reject a row when its requested policy differs from an existing item type;
+- individual imports require `instance_count >= 1`;
+- quantity and lot imports require `instance_count = 0`.
+
+An override is an emergency integration escape hatch, not a normal workflow. A future service/UI must restrict it and pair it with an audit transaction and reason. Partial quantities use the item type's compatible unit. A bulk item does not receive a THS asset ID. An individually tracked item may receive a permanent, unique, immutable ID.
+
+Project availability combines active `inventory_instances` with `stock_lots`, so individual, quantity, and lot policies participate in the same BOM comparison. Tests cover all three policies, import enforcement, database rejection of cross-policy inserts, explicit overrides, conflicting policy changes, and mixed-policy BOM availability.
 
 ## Units
 
@@ -108,6 +122,7 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 - Unit conversion metadata exists, but there is no complete conversion engine.
 - Generic import attributes are recorded in the template but full attribute upsert mapping is a later importer enhancement.
 - Reservation shortage enforcement is strongest for individual allocations; pooled-lot concurrency needs a service transaction.
+- Tracking-policy overrides are database-explicit but do not yet have a permissioned UI; normal imports never set them.
 - SQLite cannot absolutely prevent a privileged operator from dropping triggers or manually rewriting the file.
 - Standard 1,000 g Overture, Elegoo, and Bambu values remain documented packaging assumptions pending physical label verification.
 
@@ -118,5 +133,4 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 3. Verify open-wall colors, grams, and rack positions through a staged import.
 4. Build the read-only grouped Filament Inventory interface only after checkpoint approval.
 5. Add project allocation and completion services, then optional Bambu integration.
-
 
