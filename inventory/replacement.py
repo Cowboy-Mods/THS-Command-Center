@@ -106,6 +106,13 @@ class ReplaceActiveFilamentSpoolWorkflow:
             raise ReplaceSpoolError("current and replacement spools must be different")
         actor = self._text(form, "actor", 100)
         reason = self._optional(form, "reason", 500)
+        print_job_name = self._optional(form, "print_job_name", 160)
+        approximate_layer = self._optional_nonnegative_int(
+            form, "approximate_layer", "approximate layer"
+        )
+        printer = self._optional(form, "printer", 120)
+        plate = self._optional(form, "plate", 120)
+        operational_note = self._optional(form, "operational_note", 1000)
 
         with closing(connect(self.database)) as db:
             current = self._active_spool(db, current_id)
@@ -142,6 +149,11 @@ class ReplaceActiveFilamentSpoolWorkflow:
                 "module": self.MODULE,
                 "actor": actor,
                 "reason": reason,
+                "print_job_name": print_job_name,
+                "approximate_layer": approximate_layer,
+                "printer": printer,
+                "plate": plate,
+                "operational_note": operational_note,
                 "current": current,
                 "replacement": replacement,
                 "destination": dict(destination),
@@ -178,6 +190,10 @@ class ReplaceActiveFilamentSpoolWorkflow:
             result = service.replace_active_filament_spool(
                 current["id"], replacement["id"], destination["id"],
                 reason=values["reason"], review_nonce=values["review_nonce"],
+                print_job_name=values["print_job_name"],
+                approximate_layer=values["approximate_layer"],
+                printer=values["printer"], plate=values["plate"],
+                operational_note=values["operational_note"],
             )
             db.commit()
             return {**values, **result}
@@ -301,6 +317,21 @@ class ReplaceActiveFilamentSpoolWorkflow:
             return value
         except (TypeError, ValueError) as exc:
             raise ReplaceSpoolError(message) from exc
+
+    @staticmethod
+    def _optional_nonnegative_int(
+        form: dict[str, str], key: str, label: str
+    ) -> int | None:
+        raw = str(form.get(key, "")).strip()
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+            if value < 0:
+                raise ValueError
+            return value
+        except ValueError as exc:
+            raise ReplaceSpoolError(f"{label} must be a whole number or blank") from exc
 
     @staticmethod
     def _b64(value: bytes) -> str:
