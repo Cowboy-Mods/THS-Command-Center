@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .db import DEFAULT_DB
+from .health import ShopHealthEngine
 
 
 class DatabaseNotReady(RuntimeError):
@@ -134,11 +135,12 @@ class InventoryQueries:
                     ORDER BY e.name,es.slot_number"""
                 )
             ]
-            totals["warnings"] = []
-            if totals["printer"] and totals["printer"]["warning_message"]:
-                totals["warnings"].append(totals["printer"]["warning_message"])
-            if totals["printer"] and totals["printer"]["status"] == "error":
-                totals["warnings"].append("THS Printer reports an Error state.")
+            totals["shop_health"] = ShopHealthEngine.evaluate(db)
+            totals["warnings"] = [
+                item.get("message")
+                or f'{item["equipment"]}: {item["readiness_label"]}'
+                for item in totals["shop_health"]["restrictions"]
+            ]
             return totals
 
     def orders(self) -> list[dict[str, Any]]:

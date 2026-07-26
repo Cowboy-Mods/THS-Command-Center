@@ -521,7 +521,8 @@ class InventoryWebApp:
 
         def cards(rows):
             return "".join(
-                f"""<article class="order-card"><p class="eyebrow">{esc(r["event_number"])}</p>
+                f"""<article class="order-card" id="maintenance-{r["id"]}">
+                <p class="eyebrow">{esc(r["event_number"])}</p>
                 <h2>{esc(r["display_name"])}</h2><p>{esc(r["symptoms"])}</p>
                 <p><strong>{esc(r["status"].replace("_", " ").title())}</strong> ·
                 {esc(r["severity"].replace("_", " ").title())} ·
@@ -766,7 +767,7 @@ class InventoryWebApp:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>{esc(title)} · THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=7">
+  <link rel="stylesheet" href="/static/style.css?v=8">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
@@ -925,9 +926,24 @@ class InventoryWebApp:
             f'<strong>{esc(value)}</strong><p>{esc(note)}</p></article>'
             for label, value, note in cards
         )
-        warnings = (
-            "".join(f"<li>{esc(message)}</li>" for message in t["warnings"])
-            if t["warnings"] else "<li>No critical shop warnings.</li>"
+        health = t["shop_health"]
+        signals = "".join(
+            f'<span class="signal-light {name}{" active" if health["signal"] == name else ""}"'
+            f' aria-label="{label}"></span>'
+            for name, label in (("red", "Red"), ("yellow", "Yellow"), ("green", "Green"))
+        )
+        restrictions = (
+            "".join(
+                f"""<li><div><strong>{esc(item["equipment"])}</strong>
+                <span>{esc(item["readiness_label"])}</span></div>
+                {f'<span>Maintenance: <a href="{esc(item["href"])}">{esc(item["maintenance_number"])}</a></span>' if item.get("maintenance_number") else ''}
+                {f'<span>Severity: {esc(item["severity"].replace("_", " ").title())}</span>' if item.get("severity") else ''}
+                {f'<span>Status: {esc(item["status"].replace("_", " ").title())}</span>' if item.get("status") else ''}
+                {f'<span>{esc(item["message"])}</span>' if item.get("message") else ''}</li>"""
+                for item in health["restrictions"]
+            )
+            if health["restrictions"]
+            else "<li>All relevant equipment readiness states are normal. No active operational restrictions.</li>"
         )
         printer = t["printer"]
         freshness = (
@@ -968,8 +984,11 @@ class InventoryWebApp:
             ) if t["recent_activity"] else "<li>No controlled inventory activity recorded yet.</li>"
         )
         content = f"""
-        <section class="alert-panel {"warning" if t["warnings"] else "good"}" aria-labelledby="warning-title">
-          <h2 id="warning-title">Critical warnings and errors</h2><ul>{warnings}</ul></section>
+        <section class="alert-panel health-{health["signal"]}" aria-labelledby="warning-title">
+          <div class="health-heading"><div class="traffic-signal" role="img"
+            aria-label="{esc(health["label"])}">{signals}</div>
+            <div><p class="eyebrow">Shop health</p><h2 id="warning-title">{esc(health["label"])}</h2></div>
+          </div><ul class="health-restrictions">{restrictions}</ul></section>
         <section class="ops-section" aria-labelledby="printer-title"><div class="section-heading">
           <div><h2 id="printer-title">Printer status</h2><p>Source and freshness are always explicit.</p></div>{freshness}</div>
           <article class="printer-card"><div><p class="eyebrow">{esc(printer["manufacturer"] if printer else "")} {esc(printer["model"] if printer else "")}</p>

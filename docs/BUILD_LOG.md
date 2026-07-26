@@ -120,3 +120,13 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   dry run that fingerprints protected operational tables.
 - Kept evidence, receiving, inventory integration, maintenance linkage, dashboards,
   analytics, cost accounting, and reorder logic out of Phase 1.
+
+## 2026-07-26 — Dashboard Shop-Health Correction
+
+- Separated operational shop-health evaluation from its visual presentation.
+- Equipment readiness now prevents a false all-clear whenever a non-normal
+  operational restriction exists.
+- Added Shop Ready, Attention Required, and Operation Restricted traffic-signal
+  presentation with linked maintenance details.
+- Added the Personal by Design, One Engine. Your Workshop., and honest operational
+  restriction principles to the tracked Maeve design philosophy.

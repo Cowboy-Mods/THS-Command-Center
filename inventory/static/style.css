@@ -287,8 +287,33 @@ a.workflow-card:hover {
   background: var(--surface);
 }
 .alert-panel.warning { border-left-color: var(--warning); }
+.alert-panel.health-yellow { border-left-color: var(--warning); }
+.alert-panel.health-red { border-left-color: var(--danger); }
 .alert-panel h2 { margin: 0 0 .35rem; font-size: 1rem; }
 .alert-panel ul { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+.health-heading { display: flex; align-items: center; gap: .85rem; margin-bottom: .6rem; }
+.health-heading h2, .health-heading .eyebrow { margin: 0; }
+.traffic-signal {
+  display: flex;
+  gap: .3rem;
+  padding: .3rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: #090a0c;
+}
+.signal-light {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: #34373c;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.signal-light.red.active { background: #d63c34; box-shadow: 0 0 .7rem rgba(214,60,52,.7); }
+.signal-light.yellow.active { background: #e2aa2d; box-shadow: 0 0 .7rem rgba(226,170,45,.7); }
+.signal-light.green.active { background: #45b96b; box-shadow: 0 0 .7rem rgba(69,185,107,.7); }
+.health-restrictions li { margin: .35rem 0; }
+.health-restrictions li div { display: inline-flex; gap: .45rem; margin-right: .45rem; }
+.health-restrictions li > span { margin-right: .45rem; }
 .printer-card, .order-card {
   padding: 1rem;
   border: 1px solid var(--line);
