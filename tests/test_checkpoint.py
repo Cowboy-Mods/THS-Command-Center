@@ -2,7 +2,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from inventory.checkpoint import apply_checkpoint, dry_run, sha256, verify_database
+from inventory.checkpoint import (
+    apply_checkpoint, dry_run, purchase_foundation_dry_run, sha256, verify_database,
+)
 from inventory.db import connect, migrate
 
 
@@ -48,6 +50,33 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
         self.assertEqual(sha256(backup), before["sha256"])
         self.assertIn("009_print_registry_audit.sql", result["applied"])
         self.assertEqual(result["after"]["counts"], before["counts"])
+
+    def test_03_purchase_foundation_dry_run_preserves_protected_content(self):
+        from inventory import db as db_module
+        migrations = db_module.MIGRATIONS
+        old = self.root / "purchase-pre013.sqlite3"
+        db_module.MIGRATIONS = self.root / "pre013-migrations"
+        db_module.MIGRATIONS.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name < "013_purchase_registry_foundation.sql":
+                (db_module.MIGRATIONS / source.name).write_bytes(source.read_bytes())
+        try:
+            db = connect(old)
+            migrate(db)
+            db.close()
+        finally:
+            db_module.MIGRATIONS = migrations
+        result = purchase_foundation_dry_run(old)
+        self.assertEqual(result["applied"], ["013_purchase_registry_foundation.sql"])
+        self.assertEqual(result["integrity"], "ok")
+        self.assertEqual(result["migration_count"], 13)
+        self.assertEqual(result["category_count"], 9)
+        self.assertFalse(any(result["production_counts"].values()))
+
+    def test_04_purchase_foundation_dry_run_is_idempotent(self):
+        result = purchase_foundation_dry_run(self.database)
+        self.assertEqual(result["applied"], [])
+        self.assertEqual(result["integrity"], "ok")
 
 
 if __name__ == "__main__":

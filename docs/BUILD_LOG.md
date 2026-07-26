@@ -105,3 +105,18 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Add Apple Watch battery reporting if available through Shortcuts.
 - Add low-battery charging reminders.
 - Continue integrating Maeve with the THS Command Center, Home Assistant, room monitor, and Get Home workflow.
+
+## 2026-07-26 — Purchase Registry Foundation Phase 1
+
+- Preserved the legacy `orders` and receiving workflow without converting
+  `THS-ORD-000001`.
+- Added additive migration `013_purchase_registry_foundation.sql` for vendors,
+  extensible categories, permanent `THS-PO-######` purchases, immutable lines, and
+  immutable signed history.
+- Added integer-cent monetary validation, signed expiring zero-write previews,
+  explicit confirmation, atomic commits, stale-state checks, and nonce replay
+  protection.
+- Added read-only purchase verification queries and a purchase-specific migration
+  dry run that fingerprints protected operational tables.
+- Kept evidence, receiving, inventory integration, maintenance linkage, dashboards,
+  analytics, cost accounting, and reorder logic out of Phase 1.
