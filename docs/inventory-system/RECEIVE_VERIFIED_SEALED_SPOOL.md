@@ -44,7 +44,5 @@ The full suite contains 93 passing tests.
 
 ## Next checkpoint
 
-Implement **Open Existing Sealed Spool** as a second narrow confirmed workflow.
-
-The real-world first target is one of the two seeded Bambu Lab PLA Basic Orange spools for the modified Tweety Bird hat with an orange THS logo. The future workflow must select one specific `THS-FIL` ID, preview the change, record the project or reason, change only that spool from sealed to open through the Inventory Action Service, and leave the second seeded Orange spool sealed.
+The next operational checkpoint became the composite [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md) workflow so the physical empty, open, and AMS-load steps cannot be partially recorded.
 
