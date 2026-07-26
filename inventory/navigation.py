@@ -49,29 +49,80 @@ NAVIGATION = [
         ],
     ),
     (
-        "Planning and Operations",
+        "Projects",
         [
-            ("Projects", "/modules/projects"),
+            ("Project List", "/modules/project-list"),
             ("Bills of Materials", "/modules/bills-of-materials"),
             ("Build Readiness", "/modules/build-readiness"),
             ("Reservations", "/modules/reservations"),
+        ],
+    ),
+    (
+        "Orders and Purchasing",
+        [
             ("Purchase Orders", "/modules/purchase-orders"),
             ("Shopping List", "/modules/shopping-list"),
             ("Reorder Recommendations", "/modules/reorder-recommendations"),
             ("Suppliers", "/modules/suppliers"),
             ("Purchase History", "/modules/purchase-history"),
-            ("Locations", "/modules/locations"),
-            ("Maintenance", "/modules/maintenance"),
         ],
     ),
     (
-        "Information and Control",
+        "Locations",
         [
-            ("Reports", "/modules/reports"),
-            ("Imports", "/modules/imports"),
-            ("Integrations", "/modules/integrations"),
-            ("Settings", "/modules/settings"),
+            ("Rooms", "/modules/rooms"),
+            ("Shelves and Racks", "/modules/shelves-racks"),
+            ("Cabinets and Drawers", "/modules/cabinets-drawers"),
+            ("Mobile or Job Locations", "/modules/mobile-job-locations"),
+        ],
+    ),
+    (
+        "Maintenance",
+        [
+            ("Equipment Maintenance", "/modules/equipment-maintenance"),
+            ("Printer Maintenance", "/modules/printer-maintenance"),
+            ("Service History", "/modules/service-history"),
+            ("Maintenance Supplies", "/modules/maintenance-supplies"),
+        ],
+    ),
+    (
+        "Reports",
+        [
+            ("Inventory Summary", "/modules/inventory-summary"),
+            ("Low Stock", "/modules/low-stock"),
+            ("Usage History", "/modules/usage-history"),
+            ("Archived Inventory", "/modules/archived-inventory"),
+            ("Inventory Value", "/modules/inventory-value"),
+        ],
+    ),
+    (
+        "Imports",
+        [
+            ("Import Inventory", "/modules/import-inventory"),
+            ("Import History", "/modules/import-history"),
+            ("Validation Results", "/modules/validation-results"),
+        ],
+    ),
+    (
+        "Integrations",
+        [
+            ("Maeve", "/modules/maeve"),
+            ("Printers", "/modules/printers"),
+            ("RFID / NFC / Barcode", "/modules/rfid-nfc-barcode"),
+            ("External Services", "/modules/external-services"),
+        ],
+    ),
+    (
+        "Settings",
+        [
+            ("Categories", "/modules/categories"),
+            ("Item Types", "/modules/item-types"),
+            ("Attributes", "/modules/attributes"),
+            ("Units", "/modules/units"),
             ("Tracking Policies", "/modules/tracking-policies"),
+            ("Locations", "/modules/location-settings"),
+            ("Identification Rules", "/modules/identification-rules"),
+            ("Application Settings", "/modules/application-settings"),
         ],
     ),
 ]
@@ -82,5 +133,4 @@ MODULES = {
     for label, path in links
     if path.startswith("/modules/")
 }
-
 
