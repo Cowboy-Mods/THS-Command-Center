@@ -95,11 +95,11 @@ Verified browser viewports:
 
 All checked pages avoided horizontal document scrolling at those normal viewports. The interface includes semantic headings, a skip link, visible focus styles, labeled controls, table headers, text status labels, accessible contrast, Escape-to-close navigation, and reduced-motion support.
 
-## Read-only boundary
+## Read-only boundary and one controlled write path
 
-No web route or control adds, edits, imports, reserves, consumes, moves, loads, unloads, archives, corrects, or deletes inventory. Query connections open SQLite in read-only mode. The read-only badge is informational; the safety boundary is enforced by the absence of mutation routes and read-only database connections.
+Normal dashboard, inventory, product, spool, AMS, search, filter, and placeholder routes remain read-only. They do not add, edit, import, reserve, consume, move, load, unload, archive, correct, or delete inventory.
 
-All future mutation routes must call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). The dashboard must never gain direct SQL write access.
+The only mutation route is the purpose-built [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md) confirmation. Its signed preview and explicit confirmation call the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md). No dashboard route has direct SQL write access.
 
 ## Tests
 
@@ -107,7 +107,7 @@ All future mutation routes must call the centralized [Inventory Action Service](
 py -3 -m unittest discover -v
 ```
 
-The interface suite covers the 24 dashboard acceptance scenarios in addition to the existing inventory/database suite.
+The interface suite covers the 24 original dashboard acceptance scenarios and 14 receive-workflow scenarios in addition to the inventory/database and action-service suites.
 
 ## Placeholder modules
 
@@ -116,7 +116,8 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 ## Known limitations
 
 - Local development server only; no authentication, permissions, TLS, or external hosting.
-- No edit or inventory transaction workflows.
+- Only one editable workflow exists: receive one verified sealed spool.
+- No editing of existing inventory, quantity correction, AMS editing, or broad product management.
 - No live refresh or push notifications.
 - No Bambu, Maeve voice, RFID, NFC, barcode, or QR integration.
 - Product-level search returns the grouped product that owns a matching THS-FIL ID; spool details are selected from that product.
@@ -124,5 +125,5 @@ Planned materials, components, tools, consumables, projects, purchasing, locatio
 
 ## Next checkpoint
 
-The centralized Inventory Action Service is now implemented. Cowboy and ChatGPT should review its audit and reversal contract before choosing the first narrow editable workflow. Do not build a general-purpose database editor.
+Implement **Open Existing Sealed Spool** next. The first real target will be one of the two existing Bambu Lab PLA Basic Orange spools for the modified Tweety Bird THS-logo hat. Select one permanent ID and leave the second Orange spool sealed.
 
