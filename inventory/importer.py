@@ -25,6 +25,7 @@ def import_csv(
         (path.name, digest, "validating", int(not apply)),
     ).lastrowid
     accepted = rejected = warnings = 0
+    audit_rows: list[tuple[int, str | None, str, str | None, str]] = []
     with path.open(encoding="utf-8-sig", newline="") as source:
         rows = list(csv.DictReader(source))
     try:
@@ -62,17 +63,13 @@ def import_csv(
                 errors.append("duplicate external_id")
             if errors:
                 rejected += 1
-                db.execute(
-                    "INSERT INTO import_rows(batch_id,row_number,external_id,status,message,raw_data) "
-                    "VALUES (?,?,?,?,?,?)",
-                    (batch_id, number, external_id or None, "rejected", "; ".join(errors), json.dumps(row)),
+                audit_rows.append(
+                    (number, external_id or None, "rejected", "; ".join(errors), json.dumps(row))
                 )
                 continue
             accepted += 1
-            db.execute(
-                "INSERT INTO import_rows(batch_id,row_number,external_id,status,raw_data) "
-                "VALUES (?,?,?,?,?)",
-                (batch_id, number, external_id or None, "accepted", json.dumps(row)),
+            audit_rows.append(
+                (number, external_id or None, "accepted" if apply else "validated", None, json.dumps(row))
             )
             if apply:
                 category = db.execute("SELECT id FROM categories WHERE name=?", (row["category"],)).fetchone()
@@ -130,6 +127,11 @@ def import_csv(
         else:
             db.execute("RELEASE inventory_import")
             status = "applied"
+        db.executemany(
+            "INSERT INTO import_rows(batch_id,row_number,external_id,status,message,raw_data) "
+            "VALUES (?,?,?,?,?,?)",
+            [(batch_id, *row) for row in audit_rows],
+        )
         db.execute(
             "UPDATE import_batches SET status=?,accepted_count=?,rejected_count=?,warning_count=?,"
             "completed_at=CURRENT_TIMESTAMP WHERE id=?",
