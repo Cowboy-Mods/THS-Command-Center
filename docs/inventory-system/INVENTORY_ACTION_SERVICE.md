@@ -83,6 +83,7 @@ Inventory operations:
 - `mark_loaded_spool_empty`
 - `open_sealed_spool`
 - `replace_active_filament_spool`
+- `initialize_verified_ams_state`
 - `reverse_action`
 
 Additional workflows must be added as service methods before any caller exposes them.
@@ -148,4 +149,7 @@ The receive workflow and first composite shop workflow are complete:
 
 - [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md)
 - [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md)
+- [Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md)
+
+AMS loading now requires an active Open spool. Initialization performs Sealed â†’ Open â†’ Loaded atomically when required, or Open â†’ Loaded directly. A verified RFC3339 effective timestamp can be applied consistently to assignment, transaction, and audit occurrence times. Unique action request nonces reject replayed initialization confirmations.
 
