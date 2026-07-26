@@ -128,7 +128,7 @@ class ReplaceActiveFilamentSpoolTests(unittest.TestCase):
         self.assertEqual(status, 200)
         for expected in (
             current_id, jade_id, "Unload and mark Empty", "Open sealed replacement",
-            "Load replacement", "AMS 1 Slot 1", "Preview only â€” zero inventory writes",
+            "Load replacement", "AMS 1 Slot 1", "Preview only — zero inventory writes",
         ):
             self.assertIn(expected, text)
         self.assertEqual(before, self.counts())
@@ -360,4 +360,3 @@ class ReplaceActiveFilamentSpoolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

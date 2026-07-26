@@ -224,6 +224,8 @@ class ReceiveSpoolWorkflow:
             body_text, signature_text = token.split(".", 1)
             body = self._unb64(body_text)
             signature = self._unb64(signature_text)
+            if self._b64(body) != body_text or self._b64(signature) != signature_text:
+                raise ValueError
             expected = hmac.new(self.secret, body, hashlib.sha256).digest()
             if not hmac.compare_digest(signature, expected):
                 raise ValueError

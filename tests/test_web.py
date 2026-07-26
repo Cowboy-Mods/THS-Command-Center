@@ -42,16 +42,15 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         self.assertIn("text/html", headers["Content-Type"])
         self.assertIn("<h1>Dashboard</h1>", page)
 
-    def test_02a_dashboard_is_the_primary_controlled_workflow_hub(self):
+    def test_02a_dashboard_workflow_cards_are_removed_in_favor_of_operational_state(self):
         _, _, page = self.page("/")
-        self.assertIn('id="workflow-hub-title">Controlled workflows</h2>', page)
-        for path in (
-            "/inventory/filament/ams/initialize",
-            "/inventory/filament/replace",
-            "/inventory/filament/receive",
-        ):
-            self.assertGreaterEqual(page.count(f'href="{path}"'), 2)
-        self.assertIn("No route memorization required", page)
+        self.assertNotIn('class="workflow-card"', page)
+        self.assertNotIn('id="workflow-hub-title"', page)
+        self.assertIn("What is happening in the shop right now", page)
+        self.assertIn("Printer status", page)
+        self.assertIn("AMS occupancy and loaded filament", page)
+        self.assertIn("Pending orders", page)
+        self.assertIn("Recent activity", page)
 
     def test_02b_topbar_workflow_control_is_a_real_menu(self):
         _, _, page = self.page("/")
@@ -65,7 +64,7 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         _, _, page = self.page("/")
         self.assertIn("Receive Open Spool", page)
         self.assertIn("Inventory Adjustments", page)
-        self.assertGreaterEqual(page.count('aria-disabled="true"'), 4)
+        self.assertEqual(page.count('aria-disabled="true"'), 2)
         self.assertNotIn('href="/inventory/filament/open-spool"', page)
         self.assertNotIn('href="/inventory/adjustments"', page)
 
@@ -74,25 +73,24 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         self.assertIn("Active physical spools", page)
         self.assertIn("<strong>30</strong>", page)
 
-    def test_04_dashboard_displays_17_catalog_products(self):
+    def test_04_dashboard_displays_18_catalog_products_including_order_identity(self):
         _, _, page = self.page("/")
         self.assertIn("Catalog products", page)
-        self.assertIn("<strong>17</strong>", page)
+        self.assertIn("<strong>18</strong>", page)
 
     def test_05_dashboard_displays_26800_gram_assumption_total(self):
         _, _, page = self.page("/")
         self.assertIn("26,800 g", page)
         self.assertIn("26.8 kg", page)
 
-    def test_06_dashboard_brand_totals_are_correct(self):
-        _, _, page = self.page("/")
+    def test_06_filament_inventory_brand_totals_are_correct(self):
+        _, _, page = self.page("/inventory/filament")
         for brand, count in (("Overture",6),("Elegoo",2),("Bambu Lab",18),("AMOLEN",4)):
             self.assertIn(brand, page)
-            self.assertIn(f"<strong>{count} spools</strong>", page)
 
     def test_07_grouped_inventory_shows_one_bambu_brown_product_with_four_spools(self):
         _, _, page = self.page("/inventory/filament?q=Brown")
-        self.assertEqual(page.count("PLA Basic â€” Brown</a>"), 1)
+        self.assertEqual(page.count("PLA Basic — Brown</a>"), 1)
         self.assertIn("<dd>4</dd>", page)
 
     def test_08_product_detail_lists_all_four_bambu_brown_spools(self):
@@ -138,7 +136,7 @@ class ReadOnlyDashboardTests(unittest.TestCase):
 
     def test_14_search_finds_products_by_color(self):
         _, _, page = self.page("/inventory/filament?q=Turquoise")
-        self.assertIn("PLA Basic â€” Turquoise", page)
+        self.assertIn("PLA Basic — Turquoise", page)
         self.assertIn("1 grouped products", page)
 
     def test_15_search_finds_spool_by_ths_fil_id(self):
@@ -222,12 +220,10 @@ class ReadOnlyDashboardTests(unittest.TestCase):
     def test_24_no_false_low_stock_alerts_without_rules(self):
         _, _, dashboard = self.page("/")
         _, _, inventory = self.page("/inventory/filament")
-        self.assertIn("Low-stock products", dashboard)
-        self.assertIn("<strong>0</strong>", dashboard)
-        self.assertEqual(inventory.count("No reorder rule set"), 17)
+        self.assertIn("0 low-stock products", dashboard)
+        self.assertEqual(inventory.count("No reorder rule set"), 18)
         self.assertNotIn(">Low stock<", inventory)
 
 
 if __name__ == "__main__":
     unittest.main()
-

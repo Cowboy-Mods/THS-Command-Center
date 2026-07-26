@@ -78,7 +78,7 @@ class ReceiveVerifiedSealedSpoolTests(unittest.TestCase):
     def test_02_receive_form_lists_existing_products_and_storage_locations(self):
         _, _, body = self.app.response("/inventory/filament/receive")
         page = body.decode()
-        self.assertIn("Bambu Lab â€” PLA Basic â€” Orange", page)
+        self.assertIn("Bambu Lab — PLA Basic — Orange", page)
         self.assertIn("Sealed Filament Rack", page)
         self.assertNotIn(">AMS 1</option>", page)
 
@@ -123,7 +123,7 @@ class ReceiveVerifiedSealedSpoolTests(unittest.TestCase):
                 "/inventory/filament/receive/review", self.new_form(**changes)
             )
             self.assertEqual(status, 422)
-        self.assertEqual(self.scalar("SELECT COUNT(*) FROM catalog_items"), 17)
+        self.assertEqual(self.scalar("SELECT COUNT(*) FROM catalog_items"), 18)
 
     def test_06_review_requires_explicit_confirmation(self):
         review = self.app.receiving.review(self.existing_form())
@@ -295,4 +295,3 @@ class ReceiveVerifiedSealedSpoolTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

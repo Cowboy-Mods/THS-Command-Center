@@ -191,6 +191,7 @@ class InventoryActionService:
         permanent_id: str | None = None, serial_number: str | None = None,
         lot_number: str | None = None, condition: str = "new", expires_at: str | None = None,
         notes: str | None = None, verified: bool = False, reason: str | None = None,
+        order_ref: str | None = None,
     ) -> int:
         self._require_tracking(catalog_item_id, "individual")
         self._validate_quantities(original_quantity, remaining_quantity)
@@ -213,6 +214,7 @@ class InventoryActionService:
             tx = self._transaction(
                 "add", reason, catalog_item_id, unit_id, original_quantity,
                 instance_id=row_id, destination_location_id=location_id,
+                order_ref=order_ref,
             )
             self._audit(
                 "add_individual_instance", "inventory_instance", row_id, human_id,
@@ -220,6 +222,210 @@ class InventoryActionService:
                 reverse_action="archive_instance", reason=reason, transaction_id=tx,
             )
             return row_id
+
+        return self._atomic(work)
+
+    def create_order(
+        self, *, supplier: str, description: str, expected_quantity: int,
+        unit_label: str, state: str = "ordered", catalog_item_id: int | None = None,
+        material: str | None = None, color: str | None = None,
+        notes: str | None = None, reason: str | None = None,
+    ) -> int:
+        if state != "ordered":
+            raise InventoryActionError("new orders must begin in Ordered state")
+        if expected_quantity <= 0:
+            raise InventoryActionError("expected quantity must be positive")
+        if not supplier.strip() or not description.strip() or not unit_label.strip():
+            raise InventoryActionError("supplier, description, and unit label are required")
+        if catalog_item_id is not None:
+            self._tracking(catalog_item_id)
+
+        def work():
+            maximum = self.db.execute(
+                "SELECT MAX(CAST(SUBSTR(order_number,9) AS INTEGER)) FROM orders "
+                "WHERE order_number LIKE 'THS-ORD-%'"
+            ).fetchone()[0] or 0
+            order_number = f"THS-ORD-{maximum + 1:06d}"
+            order_id = self.db.execute(
+                """INSERT INTO orders(order_number,supplier,description,catalog_item_id,
+                expected_quantity,unit_label,material,color,state,notes)
+                VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    order_number, supplier.strip(), description.strip(), catalog_item_id,
+                    expected_quantity, unit_label.strip(), material, color, state, notes,
+                ),
+            ).lastrowid
+            self._audit(
+                "create_order", "order", order_id, order_number, None,
+                self._row("orders", order_id), False, reason=reason,
+            )
+            return order_id
+
+        return self._atomic(work)
+
+    def transition_order(
+        self, order_id: int, new_state: str, *, reason: str | None = None,
+    ) -> int:
+        previous = self._row("orders", order_id)
+        if not previous:
+            raise InventoryActionError("order not found")
+        allowed = {
+            "ordered": {"shipped", "cancelled"},
+            "shipped": {"delivered", "cancelled"},
+            "delivered": set(),
+            "received": set(),
+            "cancelled": set(),
+        }
+        if new_state not in allowed[previous["state"]]:
+            raise InventoryActionError(
+                f"order cannot transition from {previous['state']} to {new_state}"
+            )
+        timestamp_column = {
+            "shipped": "shipped_at", "delivered": "delivered_at",
+            "cancelled": "cancelled_at",
+        }[new_state]
+
+        def work():
+            self.db.execute(
+                f"UPDATE orders SET state=?,{timestamp_column}=CURRENT_TIMESTAMP,"
+                "updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (new_state, order_id),
+            )
+            return self._audit(
+                "transition_order", "order", order_id, previous["order_number"],
+                previous, self._row("orders", order_id), False, reason=reason,
+            )
+
+        return self._atomic(work)
+
+    def receive_order(
+        self, order_id: int, *, actual_quantity: int, condition: str,
+        location_id: int, reason: str | None = None, note: str | None = None,
+        request_nonce: str | None = None,
+    ) -> dict:
+        order = self._row("orders", order_id)
+        if not order or order["state"] not in {"ordered", "shipped", "delivered"}:
+            raise InventoryActionError("only an active pending order can be received")
+        if actual_quantity <= 0:
+            raise InventoryActionError("verified received quantity must be positive")
+        if condition not in {"new", "good", "damaged"}:
+            raise InventoryActionError("verified condition is invalid")
+        if not order["catalog_item_id"]:
+            raise InventoryActionError("order is not linked to a catalog product")
+        self._require_tracking(order["catalog_item_id"], "individual")
+        self._require("locations", location_id, "location")
+        product = self.db.execute(
+            """SELECT ci.id,ci.base_unit_id,m.name manufacturer,
+            MAX(CASE WHEN ad.name='nominal_weight_g' THEN av.numeric_value END) nominal_weight_g
+            FROM catalog_items ci JOIN manufacturers m ON m.id=ci.manufacturer_id
+            LEFT JOIN catalog_item_attribute_values av ON av.catalog_item_id=ci.id
+            LEFT JOIN attribute_definitions ad ON ad.id=av.attribute_definition_id
+            WHERE ci.id=? GROUP BY ci.id""",
+            (order["catalog_item_id"],),
+        ).fetchone()
+        if not product or not product["nominal_weight_g"]:
+            raise InventoryActionError("ordered filament product lacks nominal weight")
+
+        def work():
+            batch_id = self.db.execute(
+                """INSERT INTO receiving_batches(
+                batch_uuid,order_id,actor,actual_quantity,condition,note)
+                VALUES (?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), order_id, self.context.actor,
+                    actual_quantity, condition, note,
+                ),
+            ).lastrowid
+            instance_ids = []
+            action_ids = []
+            for _ in range(actual_quantity):
+                instance_id = self.add_individual_instance(
+                    order["catalog_item_id"], state="sealed", location_id=location_id,
+                    original_quantity=product["nominal_weight_g"],
+                    remaining_quantity=product["nominal_weight_g"],
+                    unit_id=product["base_unit_id"], condition=condition,
+                    verified=True, reason=reason or f"Receive {order['order_number']}",
+                    order_ref=order["order_number"],
+                )
+                self.db.execute(
+                    """INSERT INTO order_received_instances(
+                    order_id,receiving_batch_id,instance_id) VALUES (?,?,?)""",
+                    (order_id, batch_id, instance_id),
+                )
+                action = self.db.execute(
+                    "SELECT id FROM inventory_actions WHERE affected_entity_type="
+                    "'inventory_instance' AND affected_entity_id=? ORDER BY id DESC LIMIT 1",
+                    (instance_id,),
+                ).fetchone()
+                instance_ids.append(instance_id)
+                action_ids.append(action["id"])
+            total_received = order["received_quantity"] + actual_quantity
+            complete = total_received >= order["expected_quantity"]
+            self.db.execute(
+                """UPDATE orders SET received_quantity=?,state=?,
+                received_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE received_at END,
+                delivered_at=COALESCE(delivered_at,CURRENT_TIMESTAMP),
+                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (total_received, "received" if complete else "delivered", int(complete), order_id),
+            )
+            batch = self._row("receiving_batches", batch_id)
+            batch_action_id = self._audit(
+                "receive_order_batch", "order", order_id, order["order_number"],
+                order, {"order": self._row("orders", order_id), "batch": batch},
+                False, reason=reason, request_nonce=request_nonce,
+            )
+            return {
+                "order_id": order_id, "order_number": order["order_number"],
+                "batch_id": batch_id, "batch_uuid": batch["batch_uuid"],
+                "instance_ids": instance_ids, "instance_action_ids": action_ids,
+                "batch_action_id": batch_action_id,
+                "actual_quantity": actual_quantity, "total_received": total_received,
+                "remaining_quantity": max(0, order["expected_quantity"] - total_received),
+                "state": "received" if complete else "delivered",
+                "manufacturer": product["manufacturer"],
+            }
+
+        return self._atomic(work)
+
+    def update_printer_status(
+        self, printer_id: int, *, status: str, source: str,
+        active_job_name: str | None = None, progress_percent: float | None = None,
+        current_layer: int | None = None, total_layers: int | None = None,
+        estimated_finish_at: str | None = None, current_plate: str | None = None,
+        loaded_ams_slots: str | None = None, current_filament: str | None = None,
+        warning_message: str | None = None, reason: str | None = None,
+    ) -> int:
+        previous = self._row("printers", printer_id)
+        if not previous:
+            raise InventoryActionError("printer not found")
+        if status not in {"offline", "idle", "printing", "paused", "error", "maintenance"}:
+            raise InventoryActionError("invalid printer status")
+        if source not in {"manual", "import", "bambu_local", "system"}:
+            raise InventoryActionError("invalid printer status source")
+        if progress_percent is not None and not 0 <= progress_percent <= 100:
+            raise InventoryActionError("printer progress must be between 0 and 100")
+        if current_layer is not None and current_layer < 0:
+            raise InventoryActionError("current layer cannot be negative")
+        if total_layers is not None and total_layers <= 0:
+            raise InventoryActionError("total layers must be positive")
+
+        def work():
+            self.db.execute(
+                """UPDATE printers SET status=?,active_job_name=?,progress_percent=?,
+                current_layer=?,total_layers=?,estimated_finish_at=?,current_plate=?,
+                loaded_ams_slots=?,current_filament=?,status_source=?,
+                last_update_at=CURRENT_TIMESTAMP,warning_message=?,
+                updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (
+                    status, active_job_name, progress_percent, current_layer, total_layers,
+                    estimated_finish_at, current_plate, loaded_ams_slots, current_filament,
+                    source, warning_message, printer_id,
+                ),
+            )
+            return self._audit(
+                "update_printer_status", "printer", printer_id, previous["name"],
+                previous, self._row("printers", printer_id), False, reason=reason,
+            )
 
         return self._atomic(work)
 
@@ -857,14 +1063,15 @@ class InventoryActionService:
         unit_id: int, quantity_change: float, *, instance_id: int | None = None,
         stock_lot_id: int | None = None, source_location_id: int | None = None,
         destination_location_id: int | None = None,
-        effective_at: str | None = None,
+        effective_at: str | None = None, order_ref: str | None = None,
     ) -> int:
         tx = self.db.execute(
-            "INSERT INTO inventory_transactions(transaction_type,occurred_at,reason,origin,actor) "
-            "VALUES (?,COALESCE(?,CURRENT_TIMESTAMP),?,?,?)",
+            "INSERT INTO inventory_transactions("
+            "transaction_type,occurred_at,reason,origin,actor,order_ref) "
+            "VALUES (?,COALESCE(?,CURRENT_TIMESTAMP),?,?,?,?)",
             (
                 transaction_type, effective_at, reason,
-                self._transaction_origin(), self.context.actor,
+                self._transaction_origin(), self.context.actor, order_ref,
             ),
         ).lastrowid
         self.db.execute(
@@ -911,6 +1118,7 @@ class InventoryActionService:
         if table not in {
             "categories", "item_types", "manufacturers", "catalog_items",
             "inventory_instances", "stock_lots", "reservations", "inventory_actions",
+            "orders", "receiving_batches", "printers",
         }:
             raise RuntimeError("unsupported snapshot table")
         row = self.db.execute(f"SELECT * FROM {table} WHERE id=?", (row_id,)).fetchone()
@@ -963,4 +1171,3 @@ class InventoryActionService:
             raise InventoryActionError("effective timestamp cannot be in the future")
         if parsed.year < 2000:
             raise InventoryActionError("effective timestamp is unreasonably old")
-

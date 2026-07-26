@@ -100,7 +100,91 @@ class InventoryQueries:
                     """
                 )
             ]
+            totals["printer"] = self._printer_status(db)
+            totals["pending_orders"] = [
+                dict(row) for row in db.execute(
+                    """SELECT id,order_number,supplier,description,expected_quantity,
+                    received_quantity,unit_label,material,color,state,ordered_at,updated_at
+                    FROM orders WHERE state IN ('ordered','shipped','delivered')
+                    ORDER BY updated_at DESC,id DESC LIMIT 4"""
+                )
+            ]
+            totals["recent_activity"] = [
+                dict(row) for row in db.execute(
+                    """SELECT occurred_at,actor,action_type,affected_human_id,reason
+                    FROM inventory_actions
+                    WHERE action_type IN (
+                      'load_instance_into_ams','open_sealed_spool','mark_spool_empty',
+                      'add_individual_instance','receive_order_batch','transition_order')
+                    ORDER BY occurred_at DESC,id DESC LIMIT 6"""
+                )
+            ]
+            totals["ams_details"] = [
+                dict(row) for row in db.execute(
+                    """SELECT e.name equipment,es.slot_number,ii.permanent_id,
+                    m.name manufacturer,ci.product_line,ci.variant color,
+                    ii.remaining_quantity
+                    FROM equipment e JOIN equipment_slots es ON es.equipment_id=e.id
+                    LEFT JOIN ams_assignments aa
+                      ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
+                    LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+                    LEFT JOIN catalog_items ci ON ci.id=ii.catalog_item_id
+                    LEFT JOIN manufacturers m ON m.id=ci.manufacturer_id
+                    WHERE e.equipment_type='AMS' AND e.archived_at IS NULL
+                    ORDER BY e.name,es.slot_number"""
+                )
+            ]
+            totals["warnings"] = []
+            if totals["printer"] and totals["printer"]["warning_message"]:
+                totals["warnings"].append(totals["printer"]["warning_message"])
+            if totals["printer"] and totals["printer"]["status"] == "error":
+                totals["warnings"].append("THS Printer reports an Error state.")
             return totals
+
+    def orders(self) -> list[dict[str, Any]]:
+        with closing(self.connect()) as db:
+            return [
+                dict(row) for row in db.execute(
+                    """SELECT o.*,m.name manufacturer,ci.product_line,ci.variant
+                    FROM orders o LEFT JOIN catalog_items ci ON ci.id=o.catalog_item_id
+                    LEFT JOIN manufacturers m ON m.id=ci.manufacturer_id
+                    ORDER BY CASE o.state WHEN 'delivered' THEN 0 WHEN 'shipped' THEN 1
+                      WHEN 'ordered' THEN 2 ELSE 3 END,o.updated_at DESC,o.id DESC"""
+                )
+            ]
+
+    def order_detail(self, order_id: int) -> dict[str, Any] | None:
+        with closing(self.connect()) as db:
+            row = db.execute(
+                """SELECT o.*,m.name manufacturer,ci.product_line,ci.variant
+                FROM orders o LEFT JOIN catalog_items ci ON ci.id=o.catalog_item_id
+                LEFT JOIN manufacturers m ON m.id=ci.manufacturer_id WHERE o.id=?""",
+                (order_id,),
+            ).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["batches"] = [
+                dict(batch) for batch in db.execute(
+                    """SELECT rb.*,COUNT(ori.instance_id) instance_count
+                    FROM receiving_batches rb LEFT JOIN order_received_instances ori
+                      ON ori.receiving_batch_id=rb.id
+                    WHERE rb.order_id=? GROUP BY rb.id ORDER BY rb.received_at DESC,rb.id DESC""",
+                    (order_id,),
+                )
+            ]
+            return result
+
+    @staticmethod
+    def _printer_status(db: sqlite3.Connection) -> dict[str, Any] | None:
+        row = db.execute(
+            """SELECT *,
+            CASE WHEN last_update_at IS NULL OR
+              julianday('now')-julianday(last_update_at) > (15.0/1440.0)
+              THEN 1 ELSE 0 END status_stale
+            FROM printers ORDER BY id LIMIT 1"""
+        ).fetchone()
+        return dict(row) if row else None
 
     def grouped_filament(
         self,
@@ -368,4 +452,3 @@ class InventoryQueries:
                 AND ii.state NOT IN ('empty','archived')),0) < sr.minimum_quantity
             """
         ).fetchone()[0]
-

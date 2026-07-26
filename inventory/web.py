@@ -20,6 +20,7 @@ from .initialization import (
     InitializeAMSError,
     InitializeVerifiedAMSStateWorkflow,
 )
+from .orders import OrderReceiptError, OrderReceiptWorkflow
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -47,6 +48,7 @@ class InventoryWebApp:
         self.receiving = ReceiveSpoolWorkflow(self.database)
         self.replacement = ReplaceActiveFilamentSpoolWorkflow(self.database)
         self.initialization = InitializeVerifiedAMSStateWorkflow(self.database)
+        self.order_receiving = OrderReceiptWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -66,6 +68,8 @@ class InventoryWebApp:
             body, status = self._replacement_error(str(exc)), 422
         except InitializeAMSError as exc:
             body, status = self._initialization_error(str(exc)), 422
+        except OrderReceiptError as exc:
+            body, status = self._order_receipt_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -110,14 +114,27 @@ class InventoryWebApp:
             return self._initialization_complete(
                 self.initialization.commit(form.get("review_token", ""))
             ), 201
+        if method == "POST" and path == "/orders/receive/review":
+            return self._order_receipt_review(self.order_receiving.review(form)), 200
+        if method == "POST" and path == "/orders/receive/confirm":
+            if form.get("confirm") != "receive-order":
+                raise OrderReceiptError("explicit order receipt confirmation is required")
+            return self._order_receipt_complete(
+                self.order_receiving.commit(form.get("review_token", ""))
+            ), 201
         if method != "GET":
             return self._method_not_allowed(), 405
         if path == "/":
-            return self._dashboard(), 200
+            return self._operational_dashboard(), 200
         if path == "/inventory/filament":
             return self._filament_inventory(query), 200
         if path == "/inventory/filament/ams":
             return self._ams(), 200
+        if path == "/orders":
+            return self._orders(), 200
+        match = re.fullmatch(r"/orders/(\d+)/receive", path)
+        if match:
+            return self._order_receipt_form(int(match.group(1))), 200
         match = re.fullmatch(r"/inventory/filament/products/(\d+)", path)
         if match:
             product = self.queries.product_detail(int(match.group(1)))
@@ -144,15 +161,15 @@ class InventoryWebApp:
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
-  <title>{esc(title)} Â· THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=6">
+  <title>{esc(title)} · THS Inventory System</title>
+  <link rel="stylesheet" href="/static/style.css?v=7">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
     <button class="nav-toggle" type="button" aria-controls="site-navigation"
-      aria-expanded="false"><span aria-hidden="true">â˜°</span><span>Menu</span></button>
+      aria-expanded="false"><span aria-hidden="true">☰</span><span>Menu</span></button>
     <a class="brand" href="/"><span class="brand-mark">THS</span>
       <span><strong>Inventory System</strong><small>THS Command Center</small></span></a>
     <details class="workflow-menu">
@@ -171,11 +188,15 @@ class InventoryWebApp:
           <strong>Receive Verified Sealed Spool</strong>
           <span>Add one verified sealed physical spool.</span>
         </a>
+        <a href="/orders">
+          <strong>Receive Pending Order</strong>
+          <span>Select a delivered order and preview its verified receipt.</span>
+        </a>
         <span class="workflow-menu-future" aria-disabled="true">
           <strong>Receive Open Spool</strong><span>Future workflow</span>
         </span>
         <span class="workflow-menu-future" aria-disabled="true">
-          <strong>Inventory Adjustments</strong><span>Future Â· admin only</span>
+          <strong>Inventory Adjustments</strong><span>Future · admin only</span>
         </span>
       </div>
     </details>
@@ -230,19 +251,19 @@ class InventoryWebApp:
               <span class="workflow-number">01</span><div>
               <h3>Initialize Verified AMS Slot</h3>
               <p>Place one identified Sealed or Open spool into its physically verified AMS slot.</p>
-              <strong>Start workflow â†’</strong></div>
+              <strong>Start workflow →</strong></div>
             </a>
             <a class="workflow-card" href="/inventory/filament/replace">
               <span class="workflow-number">02</span><div>
               <h3>Replace Active Filament Spool</h3>
               <p>Mark the active spool Empty, open its sealed replacement, and load it atomically.</p>
-              <strong>Start workflow â†’</strong></div>
+              <strong>Start workflow →</strong></div>
             </a>
             <a class="workflow-card" href="/inventory/filament/receive">
               <span class="workflow-number">03</span><div>
               <h3>Receive Verified Sealed Spool</h3>
               <p>Receive one verified sealed spool with review and explicit confirmation.</p>
-              <strong>Start workflow â†’</strong></div>
+              <strong>Start workflow →</strong></div>
             </a>
             <article class="workflow-card future" aria-disabled="true">
               <span class="workflow-number">04</span><div>
@@ -252,7 +273,7 @@ class InventoryWebApp:
             <article class="workflow-card future" aria-disabled="true">
               <span class="workflow-number">05</span><div>
               <h3>Inventory Adjustments</h3><p>Planned administrator-only workflow.</p>
-              <strong>Future Â· admin only</strong></div>
+              <strong>Future · admin only</strong></div>
             </article>
           </div>
         </section>
@@ -272,6 +293,109 @@ class InventoryWebApp:
             "Dashboard", content, '<span aria-current="page">Overview / Dashboard</span>',
             description="Real inventory totals. No estimated workshop stock has been invented.",
         )
+
+    def _operational_dashboard(self) -> str:
+        t = self.queries.dashboard()
+        cards = [
+            ("Active physical spools", t["physical_spools"] - t["archived_spools"], "spools"),
+            ("Sealed spools", t["sealed_spools"], "sealed"),
+            ("AMS-loaded spools", t["loaded_spools"], "loaded"),
+            ("Catalog products", t["catalog_products"], "grouped products"),
+            ("Available weight", kilograms(t["available_grams"]), grams(t["available_grams"])),
+            ("AMS occupancy", f'{t["occupied_slots"]}/{t["total_slots"]}', f'{t["empty_slots"]} empty slots'),
+        ]
+        card_html = "".join(
+            f'<article class="metric-card"><h2>{esc(label)}</h2>'
+            f'<strong>{esc(value)}</strong><p>{esc(note)}</p></article>'
+            for label, value, note in cards
+        )
+        warnings = (
+            "".join(f"<li>{esc(message)}</li>" for message in t["warnings"])
+            if t["warnings"] else "<li>No critical shop warnings.</li>"
+        )
+        printer = t["printer"]
+        freshness = (
+            '<span class="status warning">Stale · manual refresh required</span>'
+            if printer and printer["status_stale"]
+            else '<span class="status good">Current</span>'
+        )
+        ams_slots = "".join(
+            f"""<li class="dashboard-slot"><span>{esc(slot["equipment"])} · Slot {slot["slot_number"]}</span>
+            <strong>{esc(slot["permanent_id"] or "Empty")}</strong>
+            {f'<small><i class="color-swatch" style="--swatch:{self._swatch(slot["color"])}"></i>{esc(slot["manufacturer"])} · {esc(slot["color"])} · {grams(slot["remaining_quantity"])}</small>' if slot["permanent_id"] else '<small>Available</small>'}</li>"""
+            for slot in t["ams_details"]
+        )
+        pending_orders = (
+            "".join(
+                f"""<article class="compact-order"><div><span class="status neutral">{esc(order["state"].title())}</span>
+                <h3>{esc(order["description"])}</h3><p>{esc(order["supplier"])} ·
+                {order["expected_quantity"]} {esc(order["unit_label"])} · {esc(order["material"])} ·
+                <i class="color-swatch" style="--swatch:{self._swatch(order["color"])}"></i>{esc(order["color"])}</p>
+                </div><a href="/orders/{order["id"]}/receive">Review receipt</a></article>"""
+                for order in t["pending_orders"]
+            ) if t["pending_orders"] else "<p>No pending orders.</p>"
+        )
+        activity_labels = {
+            "load_instance_into_ams": "Spool loaded into AMS",
+            "open_sealed_spool": "Sealed spool opened",
+            "mark_spool_empty": "Spool marked Empty",
+            "add_individual_instance": "Physical spool received",
+            "receive_order_batch": "Order receipt committed",
+            "transition_order": "Order status changed",
+        }
+        recent = (
+            "".join(
+                f"""<li><div><strong>{esc(activity_labels.get(action["action_type"], action["action_type"]))}</strong>
+                <span>{esc(action["affected_human_id"] or "Inventory")}</span></div>
+                <small>{esc(action["actor"])} · {esc(action["occurred_at"])}</small></li>"""
+                for action in t["recent_activity"]
+            ) if t["recent_activity"] else "<li>No controlled inventory activity recorded yet.</li>"
+        )
+        content = f"""
+        <section class="alert-panel {"warning" if t["warnings"] else "good"}" aria-labelledby="warning-title">
+          <h2 id="warning-title">Critical warnings and errors</h2><ul>{warnings}</ul></section>
+        <section class="ops-section" aria-labelledby="printer-title"><div class="section-heading">
+          <div><h2 id="printer-title">Printer status</h2><p>Source and freshness are always explicit.</p></div>{freshness}</div>
+          <article class="printer-card"><div><p class="eyebrow">{esc(printer["manufacturer"] if printer else "")} {esc(printer["model"] if printer else "")}</p>
+            <h3>{esc(printer["name"] if printer else "No printer")}</h3></div>
+            <dl class="compact-stats"><div><dt>Status</dt><dd>{esc(printer["status"].title() if printer else "Not configured")}</dd></div>
+            <div><dt>Active job</dt><dd>{display(printer["active_job_name"] if printer else None, "No live job asserted")}</dd></div>
+            <div><dt>Source</dt><dd>{esc(printer["status_source"].title() if printer else "None")}</dd></div>
+            <div><dt>Last update</dt><dd>{display(printer["last_update_at"] if printer else None, "Never verified")}</dd></div></dl>
+            <p>{display(printer["operational_note"] if printer else None)}</p></article></section>
+        <section class="ops-section" aria-labelledby="ams-title"><div class="section-heading">
+          <div><h2 id="ams-title">AMS occupancy and loaded filament</h2>
+          <p>{t["occupied_slots"]} occupied · {t["empty_slots"]} empty</p></div>
+          <a href="/inventory/filament/ams">View AMS details</a></div>
+          <ul class="dashboard-slots">{ams_slots}</ul></section>
+        <section class="ops-section" aria-labelledby="orders-title"><div class="section-heading">
+          <div><h2 id="orders-title">Pending orders</h2><p>Expected stock is not physical inventory.</p></div>
+          <a href="/orders">View all orders</a></div><div class="order-list">{pending_orders}</div></section>
+        <section class="ops-section" aria-labelledby="low-title"><div class="section-heading">
+          <div><h2 id="low-title">Low stock</h2><p>Only configured thresholds create warnings.</p></div></div>
+          <div class="panel"><span class="status {"warning" if t["low_stock_products"] else "neutral"}">
+          {t["low_stock_products"]} low-stock products</span>
+          <p>{"Review configured reorder rules." if t["low_stock_products"] else "No configured product is below its threshold."}</p></div></section>
+        <section aria-labelledby="summary-title"><div class="section-heading">
+          <div><h2 id="summary-title">Shop totals</h2><p>Live inventory totals.</p></div>
+          <a class="primary-link" href="/inventory/filament">Browse filament</a>
+        </div><div class="metric-grid">{card_html}</div></section>
+        <section class="ops-section" aria-labelledby="activity-title"><div class="section-heading">
+          <div><h2 id="activity-title">Recent activity</h2><p>Latest useful immutable actions only.</p></div></div>
+          <ul class="activity-list">{recent}</ul></section>"""
+        return self._shell(
+            "Dashboard", content, '<span aria-current="page">Overview / Dashboard</span>',
+            description="What is happening in the shop right now.",
+        )
+
+    @staticmethod
+    def _swatch(color) -> str:
+        return {
+            "white": "#f4f4f0", "orange": "#ff7a18", "black": "#24262a",
+            "blue": "#2878d0", "cobalt blue": "#2454a6", "brown": "#79533a",
+            "gray": "#8a9098", "dark gray": "#4b5057", "pink": "#ef8cab",
+            "gold": "#d5a72e", "turquoise": "#27b8b2", "bambu green": "#00ae42",
+        }.get(str(color or "").lower(), "#777d86")
 
     def _filament_inventory(self, query: dict[str, list[str]]) -> str:
         get = lambda key: query.get(key, [""])[0]
@@ -300,7 +424,7 @@ class InventoryWebApp:
             rows.append(f"""
             <article class="product-card">
               <div class="product-title"><div><p class="eyebrow">{esc(p["manufacturer"])}</p>
-                <h2><a href="/inventory/filament/products/{p["id"]}">{esc(p["product_line"])} â€” {esc(p["color"])}</a></h2>
+                <h2><a href="/inventory/filament/products/{p["id"]}">{esc(p["product_line"])} — {esc(p["color"])}</a></h2>
                 <p>{esc(p["material"])}</p></div>{reorder}</div>
               <dl class="compact-stats">
                 <div><dt>Spools</dt><dd>{p["physical_spools"]}</dd></div>
@@ -358,8 +482,8 @@ class InventoryWebApp:
     def _receive_form(self) -> str:
         options = self.receiving.options()
         products = "".join(
-            f'<option value="{p["id"]}">{esc(p["manufacturer"])} â€” '
-            f'{esc(p["product_line"])} â€” {esc(p["color"])} '
+            f'<option value="{p["id"]}">{esc(p["manufacturer"])} — '
+            f'{esc(p["product_line"])} — {esc(p["color"])} '
             f'({esc(p["material"])}, {esc(p["diameter_mm"])} mm, '
             f'{grams(p["nominal_weight_g"])})</option>'
             for p in options["products"]
@@ -402,7 +526,7 @@ class InventoryWebApp:
               <textarea name="reason" maxlength="500" rows="3"></textarea></label>
           </div></fieldset>
           <div class="notice subdued"><strong>Fixed by this workflow</strong>
-            <p>Status: Sealed Â· Condition: New Â· Verified: Yes Â· Module: {esc(self.receiving.MODULE)}</p></div>
+            <p>Status: Sealed · Condition: New · Verified: Yes · Module: {esc(self.receiving.MODULE)}</p></div>
           <div class="form-actions"><a href="/inventory/filament">Cancel</a>
             <button type="submit">Review before receiving</button></div>
         </form>"""
@@ -461,8 +585,8 @@ class InventoryWebApp:
         <div class="detail-grid">
           <section class="panel"><h2>Received spool</h2><dl class="detail-list">
             <div><dt>Permanent ID</dt><dd><strong>{esc(result["permanent_id"])}</strong></dd></div>
-            <div><dt>Product</dt><dd>{esc(result["manufacturer"])} Â·
-              {esc(result["product_line"])} Â· {esc(result["color"])}</dd></div>
+            <div><dt>Product</dt><dd>{esc(result["manufacturer"])} ·
+              {esc(result["product_line"])} · {esc(result["color"])}</dd></div>
             <div><dt>Status</dt><dd>Sealed</dd></div>
             <div><dt>Location</dt><dd>{esc(result["location"])}</dd></div>
             <div><dt>Nominal weight</dt><dd>{grams(result["nominal_weight_g"])}</dd></div>
@@ -503,21 +627,21 @@ class InventoryWebApp:
             f'{esc(value)}</option>' for value in values
         )
         current_options = "".join(
-            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
-            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} — '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} — '
             f'{esc(s["equipment_name"])} Slot {s["slot_number"]}</option>'
             for s in data["current_spools"]
         )
         replacement_options = "".join(
-            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
-            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} — '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} — '
             f'{esc(s["material"])}</option>'
             for s in data["replacement_spools"]
         )
         slot_options = "".join(
             f'<option value="{slot["id"]}">{esc(slot["equipment_name"])} '
             f'Slot {slot["slot_number"]}'
-            f'{" â€” occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " â€” empty"}'
+            f'{" — occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " — empty"}'
             f'</option>' for slot in data["slots"]
         )
         no_active = (
@@ -597,7 +721,7 @@ class InventoryWebApp:
             "Replace Active Filament Spool", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             '<span aria-current="page">Replace active spool</span>',
-            description="Empty, open, and loadâ€”three audited actions, one confirmed operation.",
+            description="Empty, open, and load—three audited actions, one confirmed operation.",
         )
 
     def _replacement_review(self, review) -> str:
@@ -606,22 +730,22 @@ class InventoryWebApp:
             v["current"], v["replacement"], v["destination"]
         )
         content = f"""
-        <div class="notice"><strong>Preview only â€” zero inventory writes</strong>
+        <div class="notice"><strong>Preview only — zero inventory writes</strong>
           <p>Confirm the physical IDs and destination. Inventory may change only after the final checkbox.</p></div>
         <section class="replacement-timeline" aria-label="Replacement operation preview">
           <article><span class="step-number">1</span><div><p>Unload and mark Empty</p>
             <h2>{esc(current["permanent_id"])}</h2>
-            <span>{esc(current["manufacturer"])} Â· {esc(current["product_line"])} Â·
+            <span>{esc(current["manufacturer"])} · {esc(current["product_line"])} ·
               {esc(current["color"])}</span>
             <small>Currently {esc(current["equipment_name"])} Slot {current["slot_number"]}</small>
           </div></article>
-          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <span class="timeline-arrow" aria-hidden="true">↓</span>
           <article><span class="step-number">2</span><div><p>Open sealed replacement</p>
             <h2>{esc(replacement["permanent_id"])}</h2>
-            <span>{esc(replacement["manufacturer"])} Â· {esc(replacement["product_line"])} Â·
+            <span>{esc(replacement["manufacturer"])} · {esc(replacement["product_line"])} ·
               {esc(replacement["color"])}</span><small>{esc(replacement["material"])}</small>
           </div></article>
-          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <span class="timeline-arrow" aria-hidden="true">↓</span>
           <article><span class="step-number">3</span><div><p>Load replacement</p>
             <h2>{esc(destination["equipment_name"])} Slot {destination["slot_number"]}</h2>
             <span>{esc(replacement["permanent_id"])}</span>
@@ -663,8 +787,8 @@ class InventoryWebApp:
           into {esc(destination["equipment_name"])} Slot {destination["slot_number"]}.</p></div>
         <div class="detail-grid">
           <section class="panel"><h2>Physical result</h2><dl class="detail-list">
-            <div><dt>Outgoing spool</dt><dd>{esc(current["permanent_id"])} Â· Empty</dd></div>
-            <div><dt>Replacement spool</dt><dd>{esc(replacement["permanent_id"])} Â· Loaded</dd></div>
+            <div><dt>Outgoing spool</dt><dd>{esc(current["permanent_id"])} · Empty</dd></div>
+            <div><dt>Replacement spool</dt><dd>{esc(replacement["permanent_id"])} · Loaded</dd></div>
             <div><dt>AMS destination</dt><dd>{esc(destination["equipment_name"])}
               Slot {destination["slot_number"]}</dd></div>
             <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
@@ -703,15 +827,15 @@ class InventoryWebApp:
     def _initialization_form(self) -> str:
         data = self.initialization.options()
         spools = "".join(
-            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
-            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} — '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} — '
             f'{esc(s["state"].title())}</option>' for s in data["spools"]
         )
         slots = "".join(
             f'<option value="{slot["id"]}"'
             f'{" disabled" if slot["occupant_instance_id"] is not None else ""}>'
             f'{esc(slot["equipment_name"])} Slot {slot["slot_number"]}'
-            f'{" â€” occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " â€” empty"}'
+            f'{" — occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " — empty"}'
             f'</option>' for slot in data["slots"]
         )
         content = f"""
@@ -761,22 +885,22 @@ class InventoryWebApp:
     def _initialization_review(self, review) -> str:
         v, spool, slot = review.values, review.values["spool"], review.values["slot"]
         transition = (
-            "Sealed â†’ Open â†’ Loaded" if spool["state"] == "sealed" else "Open â†’ Loaded"
+            "Sealed → Open → Loaded" if spool["state"] == "sealed" else "Open → Loaded"
         )
         content = f"""
-        <div class="notice"><strong>Preview only â€” zero writes</strong>
+        <div class="notice"><strong>Preview only — zero writes</strong>
           <p>Verify the permanent ID, configured AMS slot, state transition, and effective time.</p></div>
         <section class="replacement-timeline initialization-preview"
           aria-label="Verified AMS initialization preview">
           <article><span class="step-number">1</span><div><p>Identified spool</p>
             <h2>{esc(spool["permanent_id"])}</h2>
-            <span>{esc(spool["manufacturer"])} Â· {esc(spool["product_line"])} Â·
+            <span>{esc(spool["manufacturer"])} · {esc(spool["product_line"])} ·
               {esc(spool["color"])}</span><small>Current state: {esc(spool["state"].title())}</small>
           </div></article>
-          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <span class="timeline-arrow" aria-hidden="true">↓</span>
           <article><span class="step-number">2</span><div><p>Controlled transition</p>
             <h2>{esc(transition)}</h2><span>No spool weight change</span></div></article>
-          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <span class="timeline-arrow" aria-hidden="true">↓</span>
           <article><span class="step-number">3</span><div><p>Verified destination</p>
             <h2>{esc(slot["equipment_name"])} Slot {slot["slot_number"]}</h2>
             <span>Effective {esc(v["effective_local"])}</span></div></article>
@@ -806,7 +930,7 @@ class InventoryWebApp:
     def _initialization_complete(self, result: dict) -> str:
         spool, slot, assignment = result["spool"], result["slot"], result["assignment"]
         open_record = (
-            f'#{result["open_action_id"]}' if result["open_action_id"] else "Not required â€” already Open"
+            f'#{result["open_action_id"]}' if result["open_action_id"] else "Not required — already Open"
         )
         content = f"""
         <div class="success-panel"><p class="eyebrow">Verified AMS state initialized</p>
@@ -904,7 +1028,7 @@ class InventoryWebApp:
           <th>Opened</th><th>Archived</th></tr></thead><tbody>{''.join(spools)}</tbody></table></div>
         </section>"""
         return self._shell(
-            f'{p["product_line"]} â€” {p["color"]}', content,
+            f'{p["product_line"]} — {p["color"]}', content,
             f'<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             f'<span aria-current="page">{esc(p["manufacturer"])} {esc(p["color"])}</span>',
         )
@@ -915,8 +1039,8 @@ class InventoryWebApp:
                 f'<tr><td data-label="When">{esc(t["occurred_at"])}</td>'
                 f'<td data-label="Action">{esc(t["transaction_type"].replace("_"," ").title())}</td>'
                 f'<td data-label="Change">{esc(t["quantity_change"])} {esc(t["unit"])}</td>'
-                f'<td data-label="Movement">{display(t["source_location"],"â€”")} â†’ '
-                f'{display(t["destination_location"],"â€”")}</td>'
+                f'<td data-label="Movement">{display(t["source_location"],"—")} → '
+                f'{display(t["destination_location"],"—")}</td>'
                 f'<td data-label="Reason">{display(t["reason"],"No reason recorded")}</td></tr>'
                 for t in s["transactions"]
             )
@@ -932,7 +1056,7 @@ class InventoryWebApp:
             <div><dt>Material</dt><dd>{display(s["material"])}</dd></div>
             <div><dt>Color</dt><dd>{esc(s["color"])}</dd></div>
             <div><dt>Diameter</dt><dd>{esc(s["diameter_mm"])} mm</dd></div>
-            <div><dt>Tracking override</dt><dd>{"Yes â€” exceptional record" if s["tracking_policy_override"] else "No"}</dd></div>
+            <div><dt>Tracking override</dt><dd>{"Yes — exceptional record" if s["tracking_policy_override"] else "No"}</dd></div>
           </dl></section>
           <section class="panel"><h2>Current inventory state</h2><dl class="detail-list">
             <div><dt>State</dt><dd><span class="status {esc(s["state"])}">{esc(s["state"].title())}</span></dd></div>
@@ -964,6 +1088,123 @@ class InventoryWebApp:
             f'<span aria-current="page">{esc(s["permanent_id"])}</span>',
         )
 
+    def _orders(self) -> str:
+        rows = []
+        for order in self.queries.orders():
+            remaining = max(0, order["expected_quantity"] - order["received_quantity"])
+            action = (
+                f'<a class="primary-link" href="/orders/{order["id"]}/receive">Review receipt</a>'
+                if order["state"] in {"ordered", "shipped", "delivered"} else ""
+            )
+            rows.append(f"""<article class="order-card"><div class="product-title"><div>
+              <p class="eyebrow">{esc(order["order_number"])}</p><h2>{esc(order["description"])}</h2>
+              <p>{esc(order["supplier"])} · {esc(order["material"])} ·
+              <i class="color-swatch" style="--swatch:{self._swatch(order["color"])}"></i>{esc(order["color"])}</p>
+              </div><span class="status neutral">{esc(order["state"].title())}</span></div>
+              <dl class="compact-stats"><div><dt>Expected</dt><dd>{order["expected_quantity"]} {esc(order["unit_label"])}</dd></div>
+              <div><dt>Received</dt><dd>{order["received_quantity"]}</dd></div>
+              <div><dt>Remaining</dt><dd>{remaining}</dd></div>
+              <div><dt>Inventory impact</dt><dd>{"Recorded" if order["received_quantity"] else "None yet"}</dd></div></dl>
+              <p>{esc(order["notes"] or "")}</p>{action}</article>""")
+        return self._shell(
+            "Orders", f'<section class="order-list">{"".join(rows)}</section>',
+            '<a href="/">Dashboard</a> / <span aria-current="page">Orders</span>',
+            description="Incoming stock stays separate from physical inventory until verified receipt.",
+        )
+
+    def _order_receipt_form(self, order_id: int) -> str:
+        order = self.queries.order_detail(order_id)
+        if not order or order["state"] not in {"ordered", "shipped", "delivered"}:
+            return self._not_found()
+        options = self.order_receiving.options()
+        locations = "".join(
+            f'<option value="{loc["id"]}">{esc(loc["name"])}</option>'
+            for loc in options["locations"]
+        )
+        content = f"""<div class="notice"><strong>Controlled order receipt</strong>
+          <p>Expected quantity is not inventory. Enter only the count and condition physically verified after arrival.</p></div>
+        <section class="panel"><h2>{esc(order["order_number"])} · {esc(order["description"])}</h2>
+          <p>{esc(order["supplier"])} · Expected {order["expected_quantity"]} {esc(order["unit_label"])}
+          · Received so far {order["received_quantity"]}</p></section>
+        <form class="receive-form" method="post" action="/orders/receive/review">
+          <input type="hidden" name="order_id" value="{order_id}">
+          <fieldset><legend>Verified delivery</legend><div class="form-grid">
+            <label><span>Actual accepted refill rolls</span><input type="number" name="actual_quantity"
+              min="1" max="100" required></label>
+            <label><span>Condition</span><select name="condition" required>
+              <option value="new">New</option><option value="good">Good</option>
+              <option value="damaged">Damaged</option></select></label>
+            <label><span>Receiving location</span><select name="location_id" required>{locations}</select></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy" maxlength="100" required></label>
+            <label class="wide-field"><span>Reason (optional)</span>
+              <input name="reason" maxlength="500" value="Verified Overture shipment receipt"></label>
+            <label class="wide-field"><span>Condition or delivery note (optional)</span>
+              <textarea name="note" maxlength="500"></textarea></label></div>
+            <label class="choice"><input type="checkbox" name="physically_verified" value="yes" required>
+              <span><strong>I physically verified the delivered quantity and condition.</strong>
+              <small>No physical inventory is created until the confirmation step.</small></span></label>
+          </fieldset><div class="form-actions"><a href="/orders">Cancel</a>
+            <button type="submit">Preview order receipt</button></div></form>"""
+        return self._shell(
+            "Receive Verified Order", content,
+            '<a href="/">Dashboard</a> / <a href="/orders">Orders</a> / '
+            '<span aria-current="page">Review delivery</span>',
+        )
+
+    def _order_receipt_review(self, review) -> str:
+        v, order = review.values, review.values["order"]
+        ids = "".join(f"<li>{esc(value)}</li>" for value in v["permanent_ids"])
+        content = f"""<div class="notice"><strong>Preview only · zero writes</strong>
+          <p>Confirm the exact received quantity, product identity, condition, location, and permanent IDs.</p></div>
+        <section class="panel review-panel"><h2>{esc(order["order_number"])} receipt preview</h2>
+          <dl class="detail-list"><div><dt>Actual manufacturer</dt><dd>{esc(order["manufacturer"])}</dd></div>
+          <div><dt>Product</dt><dd>{esc(order["product_line"])} · {esc(order["variant"])}</dd></div>
+          <div><dt>Verified quantity</dt><dd>{v["actual_quantity"]} refill rolls</dd></div>
+          <div><dt>Condition</dt><dd>{esc(v["condition"].title())}</dd></div>
+          <div><dt>Location</dt><dd>{esc(v["location"])}</dd></div>
+          <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div></dl>
+          <h3>Permanent THS-FIL IDs to create</h3><ul class="id-preview">{ids}</ul></section>
+        <form class="confirm-form" method="post" action="/orders/receive/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice"><input type="checkbox" name="confirm" value="receive-order" required>
+            <span><strong>Receive this exact verified shipment.</strong>
+            <small>The batch and all physical instances succeed together or nothing is saved.</small></span></label>
+          <div class="form-actions"><a href="/orders/{order["id"]}/receive">Go back without saving</a>
+            <button type="submit">Confirm atomic receipt</button></div></form>"""
+        return self._shell(
+            "Preview Order Receipt", content,
+            '<a href="/">Dashboard</a> / <a href="/orders">Orders</a> / '
+            '<span aria-current="page">Preview receipt</span>',
+        )
+
+    def _order_receipt_complete(self, result: dict) -> str:
+        ids = "".join(f"<li>{esc(value)}</li>" for value in result["permanent_ids"])
+        content = f"""<div class="success-panel"><p class="eyebrow">Atomic receipt completed</p>
+          <h2>{result["actual_quantity"]} Overture refill roll(s) received</h2>
+          <p>Receiving batch {esc(result["batch_uuid"])} links every new physical instance to
+          {esc(result["order_number"])}.</p></div>
+          <section class="panel"><h2>Created physical inventory</h2><ul class="id-preview">{ids}</ul>
+          <dl class="detail-list"><div><dt>Actual manufacturer</dt><dd>{esc(result["manufacturer"])}</dd></div>
+          <div><dt>Order state</dt><dd>{esc(result["state"].title())}</dd></div>
+          <div><dt>Still expected</dt><dd>{result["remaining_quantity"]}</dd></div></dl></section>
+          <div class="form-actions"><a href="/orders">View Orders</a>
+          <a class="primary-link" href="/inventory/filament">View filament inventory</a></div>"""
+        return self._shell(
+            "Order Received", content,
+            '<a href="/">Dashboard</a> / <a href="/orders">Orders</a> / '
+            '<span aria-current="page">Receipt completed</span>',
+        )
+
+    def _order_receipt_error(self, message: str) -> str:
+        return self._shell(
+            "Order receipt stopped",
+            f'<section class="empty-state"><p class="eyebrow">Nothing received</p>'
+            f'<h2>Order receipt stopped</h2><p>{esc(message)}</p>'
+            f'<a class="primary-link" href="/orders">Return to Orders</a></section>',
+            '<a href="/">Dashboard</a> / <a href="/orders">Orders</a> / '
+            '<span aria-current="page">Receipt stopped</span>',
+        )
+
     def _ams(self) -> str:
         units = []
         for unit in self.queries.ams_status():
@@ -972,7 +1213,7 @@ class InventoryWebApp:
                 if slot["assignment_id"]:
                     status = f"""<a href="/inventory/filament/spools/{slot["spool_id"]}">
                       <strong>{esc(slot["permanent_id"])}</strong></a>
-                      <span>{esc(slot["manufacturer"])} Â· {esc(slot["material"])} Â· {esc(slot["color"])}</span>
+                      <span>{esc(slot["manufacturer"])} · {esc(slot["material"])} · {esc(slot["color"])}</span>
                       <span>{grams(slot["remaining_quantity"])} remaining</span>"""
                 else:
                     status = '<strong>Empty</strong><span>No verified spool assignment</span>'
@@ -1101,4 +1342,3 @@ def serve(database=DEFAULT_DB, host="127.0.0.1", port=8787) -> None:
         print("\nTHS Inventory System stopped.")
     finally:
         server.server_close()
-

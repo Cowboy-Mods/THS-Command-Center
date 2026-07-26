@@ -104,7 +104,7 @@ class InitializeVerifiedAMSStateTests(unittest.TestCase):
         page = body.decode()
         self.assertEqual(status, 200)
         for expected in (
-            "Preview only â€” zero writes", "Jade White", "Sealed â†’ Open â†’ Loaded",
+            "Preview only — zero writes", "Jade White", "Sealed → Open → Loaded",
             "AMS 1 Slot 1", "No spool weight change", "2026-07-25",
         ):
             self.assertIn(expected, page)
@@ -307,4 +307,3 @@ class InitializeVerifiedAMSStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

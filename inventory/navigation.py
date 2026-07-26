@@ -60,7 +60,7 @@ NAVIGATION = [
     (
         "Orders and Purchasing",
         [
-            ("Purchase Orders", "/modules/purchase-orders"),
+            ("Orders", "/orders"),
             ("Shopping List", "/modules/shopping-list"),
             ("Reorder Recommendations", "/modules/reorder-recommendations"),
             ("Suppliers", "/modules/suppliers"),
@@ -133,4 +133,3 @@ MODULES = {
     for label, path in links
     if path.startswith("/modules/")
 }
-
