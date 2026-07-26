@@ -309,6 +309,11 @@ class ReplaceActiveFilamentSpoolTests(unittest.TestCase):
             current_instance_id=str(self.orange[0]),
             replacement_instance_id=str(self.orange[1]),
             reason="Modified Tweety Bird THS orange hat; about 10 minutes remaining",
+            print_job_name="TweetyFixed",
+            approximate_layer="283",
+            printer="Bambu printer",
+            plate="Hat plate",
+            operational_note="Outgoing Orange spool ran empty.",
         )
         result = self.app.replacement.commit(
             self.app.replacement.review(orange_form).token
@@ -321,6 +326,15 @@ class ReplaceActiveFilamentSpoolTests(unittest.TestCase):
         ), "loaded")
         self.assertEqual(result["destination_slot_id"], self.slot1)
         self.assertIn("Tweety Bird", result["reason"])
+        parent = self.row(
+            "SELECT * FROM inventory_workflow_transactions WHERE id=?",
+            (result["workflow_transaction_id"],),
+        )
+        self.assertEqual(parent["print_job_name"], "TweetyFixed")
+        self.assertEqual(parent["approximate_layer"], 283)
+        self.assertEqual(parent["printer"], "Bambu printer")
+        self.assertEqual(parent["plate"], "Hat plate")
+        self.assertIn("ran empty", parent["operational_note"])
 
     def test_16_completion_page_summarizes_parent_and_three_actions(self):
         review = self.app.replacement.review(self.form())
