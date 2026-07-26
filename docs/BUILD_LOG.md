@@ -157,3 +157,14 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   the signed preview payload.
 - Commits now use the exact reviewed UUIDs, preventing identity changes between
   preview and confirmation.
+
+## 2026-07-26 — Legacy order delivery evidence source checkpoint
+
+- Added migration 015 with immutable delivery evidence and history for legacy
+  `THS-ORD-*` records.
+- Added signed, expiring, zero-write previews with previewed UUIDs, immediate
+  commit-time SHA-256 revalidation, replay protection, and atomic history.
+- Added privacy screening and a read-only delivery-evidence section on legacy
+  order details.
+- Kept delivery proof separate from receipt, inventory, installation, and
+  consumption. No production evidence or receiving data was written.

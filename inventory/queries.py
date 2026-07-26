@@ -175,6 +175,13 @@ class InventoryQueries:
                     (order_id,),
                 )
             ]
+            result["delivery_evidence"] = [
+                dict(evidence) for evidence in db.execute(
+                    """SELECT * FROM order_delivery_evidence
+                    WHERE order_id=? ORDER BY added_at DESC,id DESC""",
+                    (order_id,),
+                )
+            ]
             return result
 
     @staticmethod

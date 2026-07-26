@@ -205,6 +205,10 @@ class InventoryWebApp:
         match = re.fullmatch(r"/orders/(\d+)/receive", path)
         if match:
             return self._order_receipt_form(int(match.group(1))), 200
+        match = re.fullmatch(r"/orders/(\d+)", path)
+        if match:
+            order = self.queries.order_detail(int(match.group(1)))
+            return (self._order_detail(order), 200) if order else (self._not_found(), 404)
         match = re.fullmatch(r"/inventory/filament/products/(\d+)", path)
         if match:
             product = self.queries.product_detail(int(match.group(1)))
@@ -1869,7 +1873,8 @@ class InventoryWebApp:
                 if order["state"] in {"ordered", "shipped", "delivered"} else ""
             )
             rows.append(f"""<article class="order-card"><div class="product-title"><div>
-              <p class="eyebrow">{esc(order["order_number"])}</p><h2>{esc(order["description"])}</h2>
+              <p class="eyebrow"><a href="/orders/{order["id"]}">{esc(order["order_number"])}</a></p>
+              <h2>{esc(order["description"])}</h2>
               <p>{esc(order["supplier"])} · {esc(order["material"])} ·
               <i class="color-swatch" style="--swatch:{self._swatch(order["color"])}"></i>{esc(order["color"])}</p>
               </div><span class="status neutral">{esc(order["state"].title())}</span></div>
@@ -1882,6 +1887,45 @@ class InventoryWebApp:
             "Orders", f'<section class="order-list">{"".join(rows)}</section>',
             '<a href="/">Dashboard</a> / <span aria-current="page">Orders</span>',
             description="Incoming stock stays separate from physical inventory until verified receipt.",
+        )
+
+    def _order_detail(self, order: dict) -> str:
+        evidence = "".join(
+            f"""<article class="order-card"><div class="product-title"><div>
+              <p class="eyebrow">{esc(item["evidence_type"].title())} · Delivery evidence</p>
+              <h3>{esc(item["caption"])}</h3></div>
+              <span class="status neutral">Immutable</span></div>
+              <dl class="compact-stats">
+              <div><dt>Captured</dt><dd>{display(item["captured_at"], "Unknown")}</dd></div>
+              <div><dt>Bytes</dt><dd>{item["file_size"]:,}</dd></div>
+              <div><dt>Added by</dt><dd>{esc(item["actor"])}</dd></div></dl>
+              <p><strong>External file:</strong> {esc(item["file_path"])}</p>
+              <p><strong>SHA-256:</strong> <code>{esc(item["sha256"])}</code></p>
+              </article>"""
+            for item in order["delivery_evidence"]
+        ) or '<p class="muted">No delivery evidence registered.</p>'
+        remaining = max(0, order["expected_quantity"] - order["received_quantity"])
+        action = (
+            f'<a class="primary-link" href="/orders/{order["id"]}/receive">Review receipt</a>'
+            if order["state"] in {"ordered", "shipped", "delivered"} else ""
+        )
+        content = f"""<section class="panel"><div class="product-title"><div>
+          <p class="eyebrow">{esc(order["order_number"])}</p>
+          <h2>{esc(order["description"])}</h2>
+          <p>{esc(order["supplier"])} · {esc(order["material"])} · {esc(order["color"])}</p>
+          </div><span class="status neutral">{esc(order["state"].title())}</span></div>
+          <dl class="compact-stats">
+          <div><dt>Expected</dt><dd>{order["expected_quantity"]}</dd></div>
+          <div><dt>Received</dt><dd>{order["received_quantity"]}</dd></div>
+          <div><dt>Remaining</dt><dd>{remaining}</dd></div></dl>
+          <p>{esc(order["notes"] or "")}</p>{action}</section>
+          <section><div class="section-heading"><div><h2>Delivery evidence</h2>
+          <p>Read-only proof of arrival. Evidence does not receive inventory.</p>
+          </div></div><div class="order-list">{evidence}</div></section>"""
+        return self._shell(
+            order["order_number"], content,
+            f'<a href="/">Dashboard</a> / <a href="/orders">Orders</a> / '
+            f'<span aria-current="page">{esc(order["order_number"])}</span>',
         )
 
     def _order_receipt_form(self, order_id: int) -> str:

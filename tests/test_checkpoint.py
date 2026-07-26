@@ -103,7 +103,16 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
             db.close()
         finally:
             db_module.MIGRATIONS = migrations
-        result = purchase_phase2a_dry_run(old)
+        through_014 = self.root / "through-014-migrations"
+        through_014.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name <= "014_purchase_evidence_maintenance_links.sql":
+                (through_014 / source.name).write_bytes(source.read_bytes())
+        db_module.MIGRATIONS = through_014
+        try:
+            result = purchase_phase2a_dry_run(old)
+        finally:
+            db_module.MIGRATIONS = migrations
         self.assertEqual(
             result["applied"], ["014_purchase_evidence_maintenance_links.sql"]
         )
