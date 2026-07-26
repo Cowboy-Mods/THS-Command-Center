@@ -4,8 +4,9 @@
 
 Purchase Registry Phase 1 is an additive purchasing ledger. It does not replace or
 convert the legacy `orders`, `receiving_batches`, or `order_received_instances`
-workflow. In particular, `THS-ORD-000001` remains the pending Overture filament
-order and keeps its existing behavior.
+workflow. In particular, `THS-ORD-000001` remains a separate legacy order rather
+than being converted to a purchase-registry record. Its evidence-backed
+receiving lifecycle is now complete.
 
 Migration `013_purchase_registry_foundation.sql` adds:
 
@@ -63,8 +64,12 @@ Before migration 013 is ever applied to production:
    created by the migration.
 12. Keep the live database, backups, screenshots, and evidence outside Git.
 
-## Phase 2 boundary
+## Current production boundary
 
-The next proposed phase is immutable SHA-256 purchase evidence with its own signed
-preview and explicit confirmation. Purchase receiving and inventory integration
-remain separate later checkpoints.
+Purchase Registry Phase 2A immutable evidence and maintenance linkage are
+implemented. Production purchase `THS-PO-000001` remains Ordered; none of its
+lines have been received, installed, consumed, or turned into inventory.
+
+The next major development checkpoint is **Purchase Registry Receiving and
+Status Transitions**. It must preserve the distinction between delivery proof,
+receipt, inventory creation, maintenance linkage, installation, and consumption.

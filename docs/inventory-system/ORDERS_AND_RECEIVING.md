@@ -4,19 +4,22 @@ Orders describe expected incoming stock. They never increase physical inventory.
 
 ## States
 
-`Ordered`, `Shipped`, `Delivered`, `Received`, and `Cancelled` are stored as validated order states. Runtime creation and state changes flow through `InventoryActionService`. An order becomes `Received` only through the controlled receipt service after the verified received total reaches or exceeds the expected quantity.
+`Ordered`, `Shipped`, `Delivered`, `Received`, and `Cancelled` are stored as validated order states. Runtime creation and state changes flow through `InventoryActionService`. The current legacy full-order workflow derives `Received` only after the verified quantity exactly equals the complete outstanding quantity.
 
 ## Verified Overture order
 
-`THS-ORD-000001` records one ordered Overture White filament bulk refill box:
+`THS-ORD-000001` records one received Overture White filament bulk refill box:
 
 - expected: four refill rolls;
 - material: PLA;
 - color: White;
-- state: Ordered;
-- physical inventory impact: zero.
+- state: Received;
+- received: four of four;
+- physical inventory: `THS-FIL-000034` through `THS-FIL-000037`.
 
-The Overture White catalog identity exists so the order can reference the real product without pretending the shipment has arrived.
+Catalog item 18 is the corrected Overture High Speed PLA, White, refill-coil
+identity. Both committed delivery photos are linked immutably to receiving batch
+`29251fad-da91-4e08-9c43-87c85743e45b`.
 
 ## Controlled receipt
 
@@ -29,9 +32,12 @@ One atomic transaction creates:
 - one immutable order/batch/instance link per refill;
 - normal inventory transactions and immutable audit records;
 - one immutable batch receipt audit record;
-- the updated cumulative received quantity and order state.
+- the final received quantity and order state.
 
-If any instance, transaction, link, or audit insert fails, the complete receipt rolls back. Partial receipts create only the verified count, keep the order in Delivered state, and allow another verified batch later.
+If any instance, transaction, link, or audit insert fails, the complete receipt
+rolls back. The current legacy workflow rejects any quantity other than the
+exact outstanding quantity. Partial receipt requires separate future design and
+approval.
 
 All created instances retain Overture as manufacturer. No Bambu or RFID identity is assumed.
 

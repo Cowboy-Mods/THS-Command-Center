@@ -197,3 +197,20 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   expiration, and replay protections without requiring another migration.
 - Made no production catalog, order, evidence, receiving, or inventory changes
   during source development.
+
+## 2026-07-26 — Completed Overture receiving lifecycle
+
+- Completed Purchase Registry Phase 1, immutable purchase evidence, and
+  maintenance linkage while keeping purchase, delivery, receipt, installation,
+  and consumption as separate facts.
+- Registered immutable legacy delivery evidence, corrected catalog item 18 in
+  place to Overture High Speed PLA White refill coil, and preserved its signed
+  order and evidence dependencies.
+- Received `THS-ORD-000001` as one evidence-backed atomic batch with date-only
+  receipt semantics and strict full-outstanding quantity enforcement.
+- Created sealed refill records `THS-FIL-000034` through `THS-FIL-000037` at
+  Sealed Filament Rack without AMS, RFID, reusable-spool, or consumption state.
+- Preserved preview-bound batch, filament, evidence-link, nonce, and immutable
+  audit identities through commit.
+- Production remains intentionally unchanged for `THS-PO-000001` (Ordered) and
+  `THS-MNT-000001` (In progress, No unattended printing).

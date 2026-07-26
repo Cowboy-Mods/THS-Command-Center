@@ -24,6 +24,23 @@ The item-type template requires material, manufacturer color name, 1.75 mm diame
 
 Instances support permanent ID, product, original/remaining grams, sealed/open/loaded/empty/archive state, condition, location, purchase/open/empty/archive dates, notes, verification, and timestamps.
 
+## Physical spool operating rule
+
+> Register new sealed filament when it is received. Register legacy open
+> filament when it first enters active use. After registration, reuse the same
+> physical spool record throughout its lifecycle.
+
+This prevents duplicate physical identities while allowing legitimate
+same-brand and same-color spools to retain separate permanent `THS-FIL` IDs.
+
+## Verified Overture receipt
+
+Legacy order `THS-ORD-000001` is Received at four of four. Catalog item 18 is
+Overture High Speed PLA, White, refill coil, 1.75 mm, and 1,000 g. Physical
+instances `THS-FIL-000034` through `THS-FIL-000037` are sealed and unopened in
+Sealed Filament Rack. Their two immutable delivery-evidence records are linked
+to receiving batch `29251fad-da91-4e08-9c43-87c85743e45b`.
+
 ## AMS configuration
 
 AMS 1 and AMS 2 each contain four numbered location slots. Empty is valid. Partial unique indexes prevent a spool from occupying two active slots and a slot from holding two active spools. Assignment rows reference immutable load and unload transactions.

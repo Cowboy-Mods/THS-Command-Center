@@ -47,12 +47,12 @@ tables and extends `purchase_history` to include `link_maintenance`. Its dry run
 The live migration requires a separate timestamped backup, preview, and explicit
 approval.
 
-## Explicitly deferred
+## Production state and deferred work
 
-- Creating the Bambu Lab purchase
-- Registering its invoice
+- Bambu purchase `THS-PO-000001` is created and remains Ordered.
+- Its immutable purchase evidence and two maintenance relationships are recorded.
 - Receiving any Bambu item
-- Receiving `THS-ORD-000001`
-- Attaching the Overture arrival photos
 - Creating inventory from a purchase
 - Recording installation or consumption
+- Purchase Registry Receiving and Status Transitions
+- Historical purchase backfill and reconciliation
