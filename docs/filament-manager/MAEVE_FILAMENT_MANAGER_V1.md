@@ -168,6 +168,16 @@ Represents one real spool or refill in the workshop.
 
 Do not require NFC or QR tags for v1. Add them later only where they reduce work for third-party, loose, or frequently moved spools. Bambu RFID remains useful for compatible Bambu filament.
 
+### Reused RFID tags and true filament identity
+
+Maeve must preserve verified physical filament identity independently from AMS-reported or RFID-reported identity. A reused Bambu RFID tag on an Overture refill may help the AMS select a profile, but it must not relabel the Overture inventory record as Bambu.
+
+Future records should distinguish the verified inventory manufacturer/product/material/color from the AMS-reported profile, RFID/tag identity, identification method, manual override status, original tag source, and mismatch warnings.
+
+One bulk box of Overture White is currently on order and is expected, but not guaranteed, to contain four refill rolls. Do not receive it before Cowboy verifies the delivered quantity and condition. If four refills are verified, represent them as four individually tracked physical instances linked to one purchase or receiving batch.
+
+Bambu Lab PLA Basic Orange now has one opened/loaded spool and one sealed reserve after the verified layer-283 replacement. Add Orange to a future shopping/reorder list because the sealed reserve has reached one; do not invent a reorder rule or mutate inventory outside the controlled workflow.
+
 ## Success Criteria
 
 A normal completed print should require no manual gram calculation. Maeve should know which AMS spool was used, deduct the recorded slicer estimate, update remaining stock, and warn when sealed emergency stock falls below its minimum.
