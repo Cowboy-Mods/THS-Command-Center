@@ -146,8 +146,8 @@ Approximate filament inputs should map to estimated grams only after nominal wei
 
 ## Next milestones
 
-1. Cowboy and ChatGPT review the Inventory Action Service boundary and physical weight assumptions.
-2. Choose the first narrow editable workflow and connect it only to the action service.
+1. Review the completed Receive a Verified Sealed Spool workflow.
+2. Implement Open Existing Sealed Spool for one selected Bambu Lab PLA Basic Orange `THS-FIL` ID, leaving the second Orange spool sealed.
 3. Verify open-wall colors, grams, and rack positions through a staged import.
 4. Add remaining consume/reconcile/project-completion service methods before exposing those actions.
 5. Add project allocation and completion services, then optional Bambu integration.
