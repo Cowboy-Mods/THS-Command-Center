@@ -8,6 +8,7 @@ import secrets
 import sqlite3
 import time
 import uuid
+from copy import deepcopy
 from contextlib import closing
 from pathlib import Path
 
@@ -21,6 +22,7 @@ class CatalogCorrectionError(ValueError):
 class CatalogCorrectionWorkflow:
     MODULE = "catalog-correction"
     MAX_REVIEW_AGE_SECONDS = 30 * 60
+    FILAMENT_FORMS = {"refill coil": "Refill coil"}
 
     def __init__(self, database, secret: bytes | None = None):
         self.database = Path(database)
@@ -34,7 +36,7 @@ class CatalogCorrectionWorkflow:
             "name": self._text(form.get("name"), "product name", 200),
             "product_line": self._text(form.get("product_line"), "product line", 200),
             "variant": self._text(form.get("variant"), "variant", 200),
-            "filament_form": self._text(form.get("filament_form"), "filament form", 100),
+            "filament_form": self._filament_form(form.get("filament_form")),
         }
         with closing(connect(self.database)) as db:
             current = self._snapshot(db, item_id)
@@ -42,11 +44,15 @@ class CatalogCorrectionWorkflow:
                 raise CatalogCorrectionError("catalog item not found")
             if proposed == {key: current[key] for key in proposed}:
                 raise CatalogCorrectionError("catalog correction does not change anything")
+            self._require_no_conflict(db, current, proposed)
+            self._revalidate_evidence_files(current["delivery_evidence"])
+            proposed_snapshot = self._proposed_snapshot(current, proposed)
         values = {
             "version": 1, "module": self.MODULE, "action": "correct_catalog_identity",
             "reviewed_at": int(time.time()), "request_nonce": uuid.uuid4().hex,
             "history_uuid": str(uuid.uuid4()), "actor": actor, "reason": reason,
             "current": current, "proposed": proposed,
+            "proposed_snapshot": proposed_snapshot,
         }
         body = self._canonical(values)
         return {"token": self._sign(body), "values": values,
@@ -66,6 +72,14 @@ class CatalogCorrectionWorkflow:
             if current != values["current"]:
                 raise CatalogCorrectionError("catalog item changed after preview; review again")
             proposed = values["proposed"]
+            if proposed["filament_form"] != self._filament_form(
+                proposed["filament_form"]
+            ):
+                raise CatalogCorrectionError("filament form is invalid")
+            if self._proposed_snapshot(current, proposed) != values["proposed_snapshot"]:
+                raise CatalogCorrectionError("proposed catalog identity changed after preview")
+            self._require_no_conflict(db, current, proposed)
+            self._revalidate_evidence_files(current["delivery_evidence"])
             db.execute(
                 "UPDATE catalog_items SET name=?,product_line=?,variant=? WHERE id=?",
                 (proposed["name"], proposed["product_line"], proposed["variant"], current["id"]),
@@ -131,6 +145,95 @@ class CatalogCorrectionWorkflow:
                 WHERE av.catalog_item_id=? ORDER BY ad.name""", (item_id,)
             )
         ]
+        snapshot["dependent_orders"] = [
+            dict(order) for order in db.execute(
+                """SELECT id,order_number,catalog_item_id,state,expected_quantity,
+                received_quantity FROM orders WHERE catalog_item_id=? ORDER BY id""",
+                (item_id,),
+            )
+        ]
+        snapshot["delivery_evidence"] = [
+            dict(evidence) for evidence in db.execute(
+                """SELECT ode.id,ode.evidence_uuid,ode.order_id,ode.evidence_scope,
+                ode.evidence_type,ode.file_path,ode.sha256,ode.file_size
+                FROM order_delivery_evidence ode
+                JOIN orders o ON o.id=ode.order_id
+                WHERE o.catalog_item_id=? ORDER BY ode.id""", (item_id,)
+            )
+        ]
+        return snapshot
+
+    @classmethod
+    def _filament_form(cls, value):
+        normalized = " ".join(str(value or "").strip().split()).casefold()
+        if normalized not in cls.FILAMENT_FORMS:
+            raise CatalogCorrectionError("filament form must be Refill coil")
+        return cls.FILAMENT_FORMS[normalized]
+
+    @classmethod
+    def _identity_key(cls, manufacturer_id, item_type_id, name, product_line, variant):
+        normalize = lambda value: " ".join(str(value or "").strip().split()).casefold()
+        return (
+            int(manufacturer_id), int(item_type_id), normalize(name),
+            normalize(product_line), normalize(variant),
+        )
+
+    @classmethod
+    def _require_no_conflict(cls, db, current, proposed):
+        target = cls._identity_key(
+            current["manufacturer_id"], current["item_type_id"], proposed["name"],
+            proposed["product_line"], proposed["variant"],
+        )
+        rows = db.execute(
+            """SELECT id,item_type_id,manufacturer_id,name,product_line,variant
+            FROM catalog_items WHERE id<>? AND item_type_id=? AND manufacturer_id IS ?""",
+            (current["id"], current["item_type_id"], current["manufacturer_id"]),
+        )
+        for row in rows:
+            if cls._identity_key(
+                row["manufacturer_id"], row["item_type_id"], row["name"],
+                row["product_line"], row["variant"],
+            ) == target:
+                raise CatalogCorrectionError(
+                    f"catalog identity conflicts with existing item {row['id']}"
+                )
+
+    @staticmethod
+    def _file_identity(path):
+        path = Path(path)
+        if not path.is_file():
+            raise CatalogCorrectionError("supporting delivery evidence file is missing")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest(), path.stat().st_size
+
+    @classmethod
+    def _revalidate_evidence_files(cls, evidence_rows):
+        for evidence in evidence_rows:
+            if evidence["evidence_scope"] != "delivery":
+                raise CatalogCorrectionError("supporting evidence scope is invalid")
+            digest, size = cls._file_identity(evidence["file_path"])
+            if digest != evidence["sha256"] or size != evidence["file_size"]:
+                raise CatalogCorrectionError(
+                    "supporting delivery evidence file changed; review again"
+                )
+
+    @staticmethod
+    def _proposed_snapshot(current, proposed):
+        snapshot = deepcopy(current)
+        snapshot.update(proposed)
+        attributes = [
+            attribute for attribute in snapshot["attributes"]
+            if attribute["name"] != "filament_form"
+        ]
+        attributes.append({
+            "name": "filament_form", "data_type": "text",
+            "text_value": proposed["filament_form"],
+            "numeric_value": None, "boolean_value": None,
+        })
+        snapshot["attributes"] = sorted(attributes, key=lambda row: row["name"])
         return snapshot
 
     def _verify(self, token):

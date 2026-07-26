@@ -23,8 +23,23 @@ catalog item ID and dependencies, updates the approved identity in place, and
 appends immutable `catalog_item_history`. Tampered, expired, stale, or replayed
 previews fail.
 
+The signed current and proposed snapshots include the complete exact dependent
+order set rather than only a count. Each order ID, order number, catalog link,
+state, expected quantity, and received quantity must remain unchanged.
+
+Supporting legacy delivery evidence is also bound into the signed snapshot by
+internal ID, UUID, order, scope, type, external path, stored SHA-256, and stored
+size. Preview and commit both re-hash the external files. A missing, substituted,
+reassigned, or changed record invalidates the correction.
+
 The optional `filament_form` attribute distinguishes a refill coil from a
-reusable spool without creating a duplicate catalog item.
+reusable spool without creating a duplicate catalog item. This controlled
+workflow currently accepts only the canonical `Refill coil` value, with safe
+case and whitespace normalization.
+
+Normalized catalog identity conflicts are queried during preview and commit,
+excluding the item being corrected. This provides a clear controlled-workflow
+error before the database uniqueness boundary.
 
 ## Delivery evidence linkage
 

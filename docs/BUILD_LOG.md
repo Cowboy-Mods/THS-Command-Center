@@ -182,3 +182,18 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Bound the batch UUID, THS-FIL IDs, evidence snapshots, and link UUIDs into the
   zero-write signed preview and atomic commit.
 - Made no production database, catalog, order, evidence, or inventory changes.
+
+## 2026-07-26 — Catalog identity correction integrity hardening
+
+- Bound exact dependent-order records and supporting legacy delivery evidence
+  into signed catalog-correction previews.
+- Added preview-time and commit-time external evidence SHA-256 and size
+  revalidation.
+- Restricted the controlled filament-form value to canonical `Refill coil`
+  with safe whitespace and case normalization.
+- Added explicit normalized catalog-identity conflict checks during preview and
+  commit.
+- Preserved preview-bound history UUID, atomic rollback, stale-state, tamper,
+  expiration, and replay protections without requiring another migration.
+- Made no production catalog, order, evidence, receiving, or inventory changes
+  during source development.
