@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
-from .db import DEFAULT_DB, ROOT
+from .db import DEFAULT_DB, ROOT, connect
 from .navigation import MODULES, NAVIGATION
 from .queries import DatabaseNotReady, InventoryQueries
 from .receiving import ReceiveSpoolError, ReceiveSpoolWorkflow
@@ -22,6 +22,8 @@ from .initialization import (
 )
 from .orders import OrderReceiptError, OrderReceiptWorkflow
 from .returning import ReturnSpoolError, ReturnSpoolToStorageWorkflow
+from .actions import ActionContext
+from .production import ProductionError, ProductionService
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -74,6 +76,8 @@ class InventoryWebApp:
             body, status = self._order_receipt_error(str(exc)), 422
         except ReturnSpoolError as exc:
             body, status = self._return_spool_error(str(exc)), 422
+        except ProductionError as exc:
+            body, status = self._production_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -136,6 +140,14 @@ class InventoryWebApp:
             return self._order_receipt_complete(
                 self.order_receiving.commit(form.get("review_token", ""))
             ), 201
+        if method == "POST" and path == "/prints/complete":
+            if form.get("confirm") != "complete-print":
+                raise ProductionError("explicit print completion confirmation is required")
+            return self._print_complete(form), 201
+        if method == "POST" and path == "/maintenance/log":
+            if form.get("confirm") != "log-maintenance":
+                raise ProductionError("explicit maintenance confirmation is required")
+            return self._maintenance_complete(form), 201
         if method != "GET":
             return self._method_not_allowed(), 405
         if path == "/":
@@ -146,6 +158,16 @@ class InventoryWebApp:
             return self._ams(), 200
         if path == "/orders":
             return self._orders(), 200
+        if path == "/prints":
+            return self._prints(), 200
+        if path == "/prints/complete":
+            return self._print_completion_form(), 200
+        if path == "/maintenance":
+            return self._maintenance(), 200
+        if path == "/audit":
+            return self._audit_mode(), 200
+        if path == "/projects":
+            return self._projects(), 200
         match = re.fullmatch(r"/orders/(\d+)/receive", path)
         if match:
             return self._order_receipt_form(int(match.group(1))), 200
@@ -161,6 +183,209 @@ class InventoryWebApp:
         if match and match.group(1) in MODULES:
             return self._placeholder(MODULES[match.group(1)]), 200
         return self._not_found(), 404
+
+    def _production_service(self, actor: str, module="print-registry-ui"):
+        return ProductionService(
+            self.database, ActionContext(actor=actor, module=module, origin="user")
+        )
+
+    def _prints(self) -> str:
+        with closing(connect(self.database)) as db:
+            rows = db.execute(
+                """SELECT pr.*,p.name project_name,r.name printer_name,
+                (SELECT COUNT(*) FROM print_evidence e WHERE e.print_record_id=pr.id) evidence_count
+                FROM print_records pr LEFT JOIN projects p ON p.id=pr.project_id
+                LEFT JOIN printers r ON r.id=pr.printer_id
+                ORDER BY pr.completed_at DESC,pr.id DESC"""
+            ).fetchall()
+        items = "".join(
+            f"""<tr><td data-label="Print">{esc(r["print_number"])}</td>
+            <td data-label="Part">{esc(r["part_name"])}</td>
+            <td data-label="Plate">{display(r["plate_name"])}</td>
+            <td data-label="Inspection">{esc(r["inspection_status"].replace("_", " ").title())}</td>
+            <td data-label="Evidence">{r["evidence_count"]}</td>
+            <td data-label="Completed">{esc(r["completed_at"])}</td></tr>"""
+            for r in rows
+        ) or '<tr><td colspan="6">No production records yet.</td></tr>'
+        return self._shell(
+            "Print Registry",
+            f"""<section class="page-heading"><div><p class="eyebrow">Production</p>
+            <h1>Print Registry</h1><p>Permanent print completion and inspection history.</p></div>
+            <a class="primary-link" href="/prints/complete">Record completed print</a></section>
+            <section class="panel table-panel"><table><thead><tr><th>Print</th><th>Part</th>
+            <th>Plate</th><th>Inspection</th><th>Evidence</th><th>Completed</th></tr></thead>
+            <tbody>{items}</tbody></table></section>""",
+            '<a href="/">Dashboard</a> / Print Registry',
+        )
+
+    def _print_completion_form(self) -> str:
+        with closing(connect(self.database)) as db:
+            printers = db.execute("SELECT id,name FROM printers ORDER BY name").fetchall()
+            projects = db.execute(
+                "SELECT id,name FROM projects WHERE archived_at IS NULL ORDER BY name"
+            ).fetchall()
+        printer_options = '<option value="">Not linked</option>' + "".join(
+            f'<option value="{r["id"]}">{esc(r["name"])}</option>' for r in printers
+        )
+        project_options = '<option value="">Not linked</option>' + "".join(
+            f'<option value="{r["id"]}">{esc(r["name"])}</option>' for r in projects
+        )
+        return self._shell(
+            "Complete Print",
+            f"""<section class="page-heading"><div><p class="eyebrow">Controlled workflow</p>
+            <h1>Record Print Completion</h1><p>Inspect the physical part before committing permanent history.</p></div></section>
+            <section class="panel"><form class="receive-form" method="post" action="/prints/complete">
+            <label><span>Job name</span><input name="job_name" maxlength="200" required></label>
+            <label><span>Plate</span><input name="plate_name" maxlength="200"></label>
+            <label><span>Part</span><input name="part_name" maxlength="200" required></label>
+            <label><span>Quantity</span><input name="quantity" type="number" min="1" value="1" required></label>
+            <label><span>Printer</span><select name="printer_id">{printer_options}</select></label>
+            <label><span>Project</span><select name="project_id">{project_options}</select></label>
+            <label><span>Completed at (RFC3339)</span>
+            <input name="completed_at" placeholder="2026-07-26T09:00:00-04:00" required></label>
+            <label><span>Completion time accuracy</span><select name="completion_time_accuracy">
+            <option value="exact">Exact</option><option value="estimated">Estimated</option>
+            <option value="unknown">Unknown</option></select></label>
+            <label><span>Inspection</span><select name="inspection_status" required>
+            <option value="accepted">Accepted</option>
+            <option value="accepted_with_defect">Accepted with defect</option>
+            <option value="rejected">Rejected</option></select></label>
+            <label><span>Defect notes</span><textarea name="defect_notes"></textarea></label>
+            <label><span>Operator</span><input name="actor" value="Cowboy" maxlength="100" required></label>
+            <label><span>Notes</span><textarea name="notes"></textarea></label>
+            <label class="confirmation"><input type="checkbox" name="confirm"
+            value="complete-print" required><span>I physically inspected this print and approve
+            creation of a permanent production record.</span></label>
+            <div class="form-actions"><a href="/prints">Cancel</a>
+            <button type="submit">Record completed print</button></div></form></section>""",
+            '<a href="/">Dashboard</a> / <a href="/prints">Print Registry</a> / Complete',
+        )
+
+    def _print_complete(self, form: dict[str, str]) -> str:
+        def optional_int(name):
+            value = str(form.get(name, "")).strip()
+            return int(value) if value else None
+        try:
+            quantity = int(form.get("quantity", "1"))
+        except ValueError as exc:
+            raise ProductionError("quantity must be a whole number") from exc
+        result = self._production_service(form.get("actor", "")).complete_print(
+            job_name=form.get("job_name", ""), plate_name=form.get("plate_name"),
+            part_name=form.get("part_name", ""), quantity=quantity,
+            printer_id=optional_int("printer_id"), project_id=optional_int("project_id"),
+            completed_at=form.get("completed_at", ""),
+            completion_time_accuracy=form.get("completion_time_accuracy", "exact"),
+            inspection_status=form.get("inspection_status", ""),
+            defect_notes=form.get("defect_notes"), notes=form.get("notes"),
+            request_nonce=form.get("request_nonce") or None,
+        )
+        return self._shell(
+            "Print Recorded",
+            f"""<section class="success-panel"><p class="eyebrow">Committed</p>
+            <h1>{esc(result["print_number"])}</h1><p>The completed print and inspection
+            are now permanent production history.</p><dl><div><dt>Inspection</dt>
+            <dd>{esc(result["inspection_status"].replace("_", " ").title())}</dd></div>
+            <div><dt>Audit event</dt><dd>#{result["audit_id"]}</dd></div></dl>
+            <a class="primary-link" href="/prints">View Print Registry</a></section>""",
+            '<a href="/">Dashboard</a> / <a href="/prints">Print Registry</a> / Recorded',
+        )
+
+    def _maintenance(self) -> str:
+        with closing(connect(self.database)) as db:
+            rows = db.execute(
+                """SELECT me.*,p.name printer_name,pr.print_number
+                FROM maintenance_events me LEFT JOIN printers p ON p.id=me.printer_id
+                LEFT JOIN print_records pr ON pr.id=me.related_print_id
+                ORDER BY me.occurred_at DESC,me.id DESC"""
+            ).fetchall()
+            printers = db.execute("SELECT id,name FROM printers ORDER BY name").fetchall()
+        history = "".join(
+            f"<li><strong>{esc(r['event_number'])}: {esc(r['summary'])}</strong>"
+            f"<small>{esc(r['occurred_at'])} · {esc(r['severity'].title())}</small></li>"
+            for r in rows
+        ) or "<li>No maintenance events recorded.</li>"
+        options = '<option value="">Not linked</option>' + "".join(
+            f'<option value="{r["id"]}">{esc(r["name"])}</option>' for r in printers
+        )
+        return self._shell(
+            "Maintenance",
+            f"""<section class="page-heading"><div><p class="eyebrow">Shop history</p>
+            <h1>Maintenance Events</h1><p>Permanent equipment incidents and service history.</p></div></section>
+            <section class="panel"><form class="receive-form" method="post" action="/maintenance/log">
+            <label><span>Event type</span><input name="event_type" value="poop_chute_backup" required></label>
+            <label><span>Summary</span><input name="summary" required></label>
+            <label><span>Details</span><textarea name="details"></textarea></label>
+            <label><span>Severity</span><select name="severity"><option>info</option>
+            <option selected>warning</option><option>critical</option></select></label>
+            <label><span>Occurred at (RFC3339)</span><input name="occurred_at" required></label>
+            <label><span>Printer</span><select name="printer_id">{options}</select></label>
+            <label><span>Actor</span><input name="actor" value="Cowboy" required></label>
+            <label class="confirmation"><input type="checkbox" name="confirm"
+            value="log-maintenance" required><span>I verified this event and approve permanent logging.</span></label>
+            <button type="submit">Log maintenance event</button></form></section>
+            <section class="panel"><h2>Service history</h2><ul class="activity-list">{history}</ul></section>""",
+            '<a href="/">Dashboard</a> / Maintenance',
+        )
+
+    def _maintenance_complete(self, form: dict[str, str]) -> str:
+        printer = str(form.get("printer_id", "")).strip()
+        result = self._production_service(
+            form.get("actor", ""), "maintenance-ui"
+        ).log_maintenance(
+            event_type=form.get("event_type", ""), summary=form.get("summary", ""),
+            details=form.get("details"), severity=form.get("severity", "info"),
+            occurred_at=form.get("occurred_at", ""),
+            printer_id=int(printer) if printer else None,
+        )
+        return self._shell(
+            "Maintenance Recorded",
+            f"""<section class="success-panel"><p class="eyebrow">Committed</p>
+            <h1>{esc(result["event_number"])}</h1><p>The maintenance event is permanent history.</p>
+            <a class="primary-link" href="/maintenance">View maintenance history</a></section>""",
+            '<a href="/">Dashboard</a> / <a href="/maintenance">Maintenance</a> / Recorded',
+        )
+
+    def _projects(self) -> str:
+        with closing(connect(self.database)) as db:
+            rows = db.execute(
+                """SELECT * FROM projects WHERE archived_at IS NULL ORDER BY updated_at DESC,id"""
+            ).fetchall()
+        cards = "".join(
+            f"""<article class="order-card"><h2>{esc(r["name"])}</h2>
+            <p><strong>{esc(r["progress_mode"].title())}</strong> ·
+            {display(r["progress_stage"], "No stage recorded")}</p>
+            <p>{display(r["progress_note"], "No progress note")}</p></article>"""
+            for r in rows
+        ) or "<p>No projects recorded.</p>"
+        return self._shell(
+            "Projects",
+            f'<section class="page-heading"><div><p class="eyebrow">Projects</p><h1>Project Progress</h1>'
+            f'<p>Exact, estimated, stage-only, or honestly unknown.</p></div></section>'
+            f'<section class="order-list">{cards}</section>',
+            '<a href="/">Dashboard</a> / Projects',
+        )
+
+    def _audit_mode(self) -> str:
+        rows = ProductionService.audit_history(self.database)
+        history = "".join(
+            f"""<tr><td data-label="When">{esc(r["occurred_at"])}</td>
+            <td data-label="Who">{esc(r["actor"])}</td><td data-label="Module">{esc(r["module"])}</td>
+            <td data-label="Event">{esc(r["event_type"])}</td>
+            <td data-label="Entity">{esc(r["entity_human_id"] or r["entity_type"])}</td>
+            <td data-label="Summary">{esc(r["summary"])}</td></tr>""" for r in rows
+        ) or '<tr><td colspan="6">No Stage 2 audit events yet.</td></tr>'
+        return self._shell(
+            "Audit Mode",
+            f"""<section class="page-heading"><div><p class="eyebrow">Read only</p>
+            <h1>Audit Mode</h1><p>Permanent history. This screen cannot edit or delete records.</p></div></section>
+            <section class="panel table-panel"><table><thead><tr><th>When</th><th>Who</th>
+            <th>Module</th><th>Event</th><th>Entity</th><th>Summary</th></tr></thead>
+            <tbody>{history}</tbody></table></section>""",
+            '<a href="/">Dashboard</a> / Audit Mode',
+        )
+
+    def _production_error(self, message: str) -> str:
+        return self._error_page("Production workflow stopped", message, status="Not recorded")
 
     def _shell(self, title: str, content: str, breadcrumb: str, *, description="") -> str:
         nav = []

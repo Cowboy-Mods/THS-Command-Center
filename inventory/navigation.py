@@ -51,7 +51,8 @@ NAVIGATION = [
     (
         "Projects",
         [
-            ("Project List", "/modules/project-list"),
+            ("Project List", "/projects"),
+            ("Print Registry", "/prints"),
             ("Bills of Materials", "/modules/bills-of-materials"),
             ("Build Readiness", "/modules/build-readiness"),
             ("Reservations", "/modules/reservations"),
@@ -79,7 +80,7 @@ NAVIGATION = [
     (
         "Maintenance",
         [
-            ("Equipment Maintenance", "/modules/equipment-maintenance"),
+            ("Equipment Maintenance", "/maintenance"),
             ("Printer Maintenance", "/modules/printer-maintenance"),
             ("Service History", "/modules/service-history"),
             ("Maintenance Supplies", "/modules/maintenance-supplies"),
@@ -88,6 +89,7 @@ NAVIGATION = [
     (
         "Reports",
         [
+            ("Audit Mode", "/audit"),
             ("Inventory Summary", "/modules/inventory-summary"),
             ("Low Stock", "/modules/low-stock"),
             ("Usage History", "/modules/usage-history"),
@@ -133,3 +135,7 @@ MODULES = {
     for label, path in links
     if path.startswith("/modules/")
 }
+
+# Preserve old bookmarked placeholder routes while real modules replace their navigation links.
+MODULES["project-list"] = "Project List"
+MODULES["equipment-maintenance"] = "Equipment Maintenance"
