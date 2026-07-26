@@ -145,7 +145,7 @@ class InventoryWebApp:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>{esc(title)} Â· THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=4">
+  <link rel="stylesheet" href="/static/style.css?v=6">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
@@ -155,7 +155,30 @@ class InventoryWebApp:
       aria-expanded="false"><span aria-hidden="true">â˜°</span><span>Menu</span></button>
     <a class="brand" href="/"><span class="brand-mark">THS</span>
       <span><strong>Inventory System</strong><small>THS Command Center</small></span></a>
-    <span class="readonly-badge">Controlled workflows</span>
+    <details class="workflow-menu">
+      <summary>Controlled workflows</summary>
+      <div class="workflow-menu-panel">
+        <p>Inventory actions</p>
+        <a href="/inventory/filament/ams/initialize">
+          <strong>Initialize Verified AMS Slot</strong>
+          <span>Record one physically verified spool assignment.</span>
+        </a>
+        <a href="/inventory/filament/replace">
+          <strong>Replace Active Filament Spool</strong>
+          <span>Empty, open, and load through one guided workflow.</span>
+        </a>
+        <a href="/inventory/filament/receive">
+          <strong>Receive Verified Sealed Spool</strong>
+          <span>Add one verified sealed physical spool.</span>
+        </a>
+        <span class="workflow-menu-future" aria-disabled="true">
+          <strong>Receive Open Spool</strong><span>Future workflow</span>
+        </span>
+        <span class="workflow-menu-future" aria-disabled="true">
+          <strong>Inventory Adjustments</strong><span>Future Â· admin only</span>
+        </span>
+      </div>
+    </details>
   </header>
   <div class="app-layout">
     <nav class="sidebar" id="site-navigation" aria-label="Main navigation">
@@ -199,6 +222,40 @@ class InventoryWebApp:
             for row in t["brand_totals"]
         )
         content = f"""
+        <section class="workflow-hub" aria-labelledby="workflow-hub-title">
+          <div class="section-heading"><div><h2 id="workflow-hub-title">Controlled workflows</h2>
+            <p>Start verified inventory actions here. No route memorization required.</p></div></div>
+          <div class="workflow-grid">
+            <a class="workflow-card" href="/inventory/filament/ams/initialize">
+              <span class="workflow-number">01</span><div>
+              <h3>Initialize Verified AMS Slot</h3>
+              <p>Place one identified Sealed or Open spool into its physically verified AMS slot.</p>
+              <strong>Start workflow â†’</strong></div>
+            </a>
+            <a class="workflow-card" href="/inventory/filament/replace">
+              <span class="workflow-number">02</span><div>
+              <h3>Replace Active Filament Spool</h3>
+              <p>Mark the active spool Empty, open its sealed replacement, and load it atomically.</p>
+              <strong>Start workflow â†’</strong></div>
+            </a>
+            <a class="workflow-card" href="/inventory/filament/receive">
+              <span class="workflow-number">03</span><div>
+              <h3>Receive Verified Sealed Spool</h3>
+              <p>Receive one verified sealed spool with review and explicit confirmation.</p>
+              <strong>Start workflow â†’</strong></div>
+            </a>
+            <article class="workflow-card future" aria-disabled="true">
+              <span class="workflow-number">04</span><div>
+              <h3>Receive Open Spool</h3><p>Planned controlled workflow.</p>
+              <strong>Future</strong></div>
+            </article>
+            <article class="workflow-card future" aria-disabled="true">
+              <span class="workflow-number">05</span><div>
+              <h3>Inventory Adjustments</h3><p>Planned administrator-only workflow.</p>
+              <strong>Future Â· admin only</strong></div>
+            </article>
+          </div>
+        </section>
         <section aria-labelledby="summary-title"><div class="section-heading">
           <div><h2 id="summary-title">Filament at a glance</h2>
           <p>Live totals from the migrated SQLite inventory database.</p></div>
