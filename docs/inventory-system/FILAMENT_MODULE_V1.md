@@ -67,3 +67,9 @@ The first composite shop workflow is now [Replace Active Filament Spool](REPLACE
 
 Verified scenarios cover the completed White-to-Bambu-Jade-White change and the upcoming Orange-to-Orange change for the modified Tweety Bird THS hat. No product or color is hard-coded into the workflow.
 
+## Verified AMS initialization
+
+[Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) provides the narrow bootstrap path required when the physical AMS state is known but no active assignment exists in the database. It accepts only a positively identified Sealed or Open `THS-FIL` spool and a configured empty AMS slot, previews without writing, requires confirmation, and commits through the Inventory Action Service without changing weight.
+
+Historical White and Orange replacement events cannot be fully reconstructed until the outgoing spool IDs, replacement spool IDs, and exact AMS slots are positively identified. The current Jade White and Orange replacements may be initialized in their verified present slots without inventing the outgoing history.
+
