@@ -12,6 +12,10 @@ from .db import DEFAULT_DB, ROOT
 from .navigation import MODULES, NAVIGATION
 from .queries import DatabaseNotReady, InventoryQueries
 from .receiving import ReceiveSpoolError, ReceiveSpoolWorkflow
+from .replacement import (
+    ReplaceActiveFilamentSpoolWorkflow,
+    ReplaceSpoolError,
+)
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -37,6 +41,7 @@ class InventoryWebApp:
         self.database = Path(database)
         self.queries = InventoryQueries(self.database)
         self.receiving = ReceiveSpoolWorkflow(self.database)
+        self.replacement = ReplaceActiveFilamentSpoolWorkflow(self.database)
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -52,6 +57,8 @@ class InventoryWebApp:
             body, status = self._database_error(str(exc)), 503
         except ReceiveSpoolError as exc:
             body, status = self._receive_error(str(exc)), 422
+        except ReplaceSpoolError as exc:
+            body, status = self._replacement_error(str(exc)), 422
         except Exception:
             body, status = self._error_page(
                 "Something went wrong",
@@ -75,6 +82,17 @@ class InventoryWebApp:
             if form.get("confirm") != "receive":
                 raise ReceiveSpoolError("explicit confirmation is required")
             return self._receive_complete(self.receiving.commit(form.get("review_token", ""))), 201
+        if method == "GET" and path == "/inventory/filament/replace":
+            filters = {key: values[0] for key, values in query.items() if values}
+            return self._replacement_form(filters), 200
+        if method == "POST" and path == "/inventory/filament/replace/review":
+            return self._replacement_review(self.replacement.review(form)), 200
+        if method == "POST" and path == "/inventory/filament/replace/confirm":
+            if form.get("confirm") != "replace":
+                raise ReplaceSpoolError("explicit replacement confirmation is required")
+            return self._replacement_complete(
+                self.replacement.commit(form.get("review_token", ""))
+            ), 201
         if method != "GET":
             return self._method_not_allowed(), 405
         if path == "/":
@@ -110,7 +128,7 @@ class InventoryWebApp:
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111111">
   <title>{esc(title)} Â· THS Inventory System</title>
-  <link rel="stylesheet" href="/static/style.css?v=2">
+  <link rel="stylesheet" href="/static/style.css?v=3">
   <script src="/static/app.js?v=1" defer></script>
 </head>
 <body>
@@ -120,7 +138,7 @@ class InventoryWebApp:
       aria-expanded="false"><span aria-hidden="true">â˜°</span><span>Menu</span></button>
     <a class="brand" href="/"><span class="brand-mark">THS</span>
       <span><strong>Inventory System</strong><small>THS Command Center</small></span></a>
-    <span class="readonly-badge">Controlled receiving</span>
+    <span class="readonly-badge">Controlled workflows</span>
   </header>
   <div class="app-layout">
     <nav class="sidebar" id="site-navigation" aria-label="Main navigation">
@@ -254,7 +272,8 @@ class InventoryWebApp:
         </form>
         <div class="result-heading" aria-live="polite"><strong>{len(data["products"])} grouped products</strong>
           <span>One card per catalog product</span>
-          <a class="primary-link" href="/inventory/filament/receive">Receive verified sealed spool</a></div>
+          <span class="inline-actions"><a href="/inventory/filament/receive">Receive sealed spool</a>
+          <a class="primary-link" href="/inventory/filament/replace">Replace active spool</a></span></div>
         <section class="product-grid" aria-label="Grouped filament products">{result}</section>"""
         return self._shell(
             "Filament Inventory", content,
@@ -401,6 +420,191 @@ class InventoryWebApp:
             "Receive spool error", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             '<span aria-current="page">Receive error</span>',
+        )
+
+    def _replacement_form(self, filters: dict[str, str]) -> str:
+        data = self.replacement.options(filters)
+        filter_options = lambda values, selected: "".join(
+            f'<option value="{esc(value)}"{" selected" if value == selected else ""}>'
+            f'{esc(value)}</option>' for value in values
+        )
+        current_options = "".join(
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'{esc(s["equipment_name"])} Slot {s["slot_number"]}</option>'
+            for s in data["current_spools"]
+        )
+        replacement_options = "".join(
+            f'<option value="{s["id"]}">{esc(s["permanent_id"])} â€” '
+            f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} â€” '
+            f'{esc(s["material"])}</option>'
+            for s in data["replacement_spools"]
+        )
+        slot_options = "".join(
+            f'<option value="{slot["id"]}">{esc(slot["equipment_name"])} '
+            f'Slot {slot["slot_number"]}'
+            f'{" â€” occupied by " + esc(slot["occupant_permanent_id"]) if slot["occupant_permanent_id"] else " â€” empty"}'
+            f'</option>' for slot in data["slots"]
+        )
+        no_active = (
+            '<div class="notice subdued"><strong>No active AMS spool found</strong>'
+            '<p>Load a verified spool into an AMS before using this workflow.</p></div>'
+            if not data["current_spools"] else ""
+        )
+        content = f"""
+        <div class="notice"><strong>One guided, atomic shop operation</strong>
+          <p>The outgoing spool is emptied, one sealed spool is opened, and that replacement is loaded.
+          Existing inventory cannot be generally edited here.</p></div>
+        {no_active}
+        <form class="filter-panel compact-filter" method="get"
+          action="/inventory/filament/replace" role="search">
+          <label class="search-field"><span>Find sealed replacement</span>
+            <input type="search" name="q" value="{esc(data["filters"]["q"])}"
+              placeholder="THS-FIL ID, manufacturer, material, or color"></label>
+          <label><span>Manufacturer</span><select name="manufacturer">
+            <option value="">All manufacturers</option>
+            {filter_options(data["manufacturers"], data["filters"]["manufacturer"])}</select></label>
+          <label><span>Material</span><select name="material">
+            <option value="">All materials</option>
+            {filter_options(data["materials"], data["filters"]["material"])}</select></label>
+          <label><span>Color</span><select name="color"><option value="">All colors</option>
+            {filter_options(data["colors"], data["filters"]["color"])}</select></label>
+          <div class="filter-actions"><button type="submit">Filter sealed spools</button>
+            <a href="/inventory/filament/replace">Clear</a></div>
+        </form>
+        <form class="receive-form replacement-form" method="post"
+          action="/inventory/filament/replace/review">
+          <fieldset><legend>1. Select the currently active spool</legend>
+            <label><span>Loaded spool</span><select name="current_instance_id" required>
+              <option value="">Select the spool currently installed</option>
+              {current_options}</select></label>
+            <label class="choice confirm-choice"><input type="checkbox"
+              name="confirm_empty" value="yes" required>
+              <span><strong>This spool is now empty.</strong>
+              <small>The spool will be removed from its active AMS slot and archived as Empty.</small></span>
+            </label>
+          </fieldset>
+          <fieldset><legend>2. Select a sealed replacement</legend>
+            <label><span>Eligible sealed spool</span><select name="replacement_instance_id" required>
+              <option value="">Select one sealed physical spool</option>
+              {replacement_options}</select></label>
+            <p class="field-help">{len(data["replacement_spools"])} sealed spool(s) match the current filters.</p>
+          </fieldset>
+          <fieldset><legend>3. Confirm the destination</legend>
+            <label><span>AMS destination</span><select name="destination_slot_id">
+              <option value="">Same AMS unit and slot as the outgoing spool (default)</option>
+              {slot_options}</select></label>
+            <p class="field-help">Choose another slot only if the replacement was physically installed there.
+              Occupied slots are rejected unless occupied by the outgoing spool.</p>
+            <div class="form-grid">
+              <label><span>Actor</span><input name="actor" value="Cowboy"
+                maxlength="100" required></label>
+              <label><span>Purpose or reason (optional)</span>
+                <input name="reason" maxlength="500"
+                  placeholder="Project, print, or shop reason"></label>
+            </div>
+          </fieldset>
+          <div class="form-actions"><a href="/inventory/filament">Cancel</a>
+            <button type="submit">Preview complete replacement</button></div>
+        </form>"""
+        return self._shell(
+            "Replace Active Filament Spool", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Replace active spool</span>',
+            description="Empty, open, and loadâ€”three audited actions, one confirmed operation.",
+        )
+
+    def _replacement_review(self, review) -> str:
+        v = review.values
+        current, replacement, destination = (
+            v["current"], v["replacement"], v["destination"]
+        )
+        content = f"""
+        <div class="notice"><strong>Preview only â€” zero inventory writes</strong>
+          <p>Confirm the physical IDs and destination. Inventory may change only after the final checkbox.</p></div>
+        <section class="replacement-timeline" aria-label="Replacement operation preview">
+          <article><span class="step-number">1</span><div><p>Unload and mark Empty</p>
+            <h2>{esc(current["permanent_id"])}</h2>
+            <span>{esc(current["manufacturer"])} Â· {esc(current["product_line"])} Â·
+              {esc(current["color"])}</span>
+            <small>Currently {esc(current["equipment_name"])} Slot {current["slot_number"]}</small>
+          </div></article>
+          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <article><span class="step-number">2</span><div><p>Open sealed replacement</p>
+            <h2>{esc(replacement["permanent_id"])}</h2>
+            <span>{esc(replacement["manufacturer"])} Â· {esc(replacement["product_line"])} Â·
+              {esc(replacement["color"])}</span><small>{esc(replacement["material"])}</small>
+          </div></article>
+          <span class="timeline-arrow" aria-hidden="true">â†“</span>
+          <article><span class="step-number">3</span><div><p>Load replacement</p>
+            <h2>{esc(destination["equipment_name"])} Slot {destination["slot_number"]}</h2>
+            <span>{esc(replacement["permanent_id"])}</span>
+          </div></article>
+        </section>
+        <section class="panel review-panel"><h2>Operation context</h2><dl class="detail-list">
+          <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div>
+          <div><dt>Module</dt><dd>{esc(v["module"])}</dd></div>
+          <div><dt>Purpose or reason</dt><dd>{display(v["reason"], "No reason provided")}</dd></div>
+        </dl></section>
+        <form class="confirm-form" method="post" action="/inventory/filament/replace/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice confirm-choice"><input type="checkbox" name="confirm"
+            value="replace" required><span><strong>Perform this exact spool replacement.</strong>
+            <small>All three actions succeed together or none are saved.</small></span></label>
+          <div class="form-actions"><a href="/inventory/filament/replace">Go back without saving</a>
+            <button type="submit">Confirm atomic replacement</button></div>
+        </form>"""
+        return self._shell(
+            "Preview Spool Replacement", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<a href="/inventory/filament/replace">Replace active spool</a> / '
+            '<span aria-current="page">Preview</span>',
+        )
+
+    def _replacement_complete(self, result: dict) -> str:
+        current, replacement, destination = (
+            result["current"], result["replacement"], result["destination"]
+        )
+        content = f"""
+        <div class="success-panel"><p class="eyebrow">Atomic workflow completed</p>
+          <h2>{esc(replacement["permanent_id"])} is loaded</h2>
+          <p>{esc(current["permanent_id"])} is Empty. The sealed replacement was opened and loaded
+          into {esc(destination["equipment_name"])} Slot {destination["slot_number"]}.</p></div>
+        <div class="detail-grid">
+          <section class="panel"><h2>Physical result</h2><dl class="detail-list">
+            <div><dt>Outgoing spool</dt><dd>{esc(current["permanent_id"])} Â· Empty</dd></div>
+            <div><dt>Replacement spool</dt><dd>{esc(replacement["permanent_id"])} Â· Loaded</dd></div>
+            <div><dt>AMS destination</dt><dd>{esc(destination["equipment_name"])}
+              Slot {destination["slot_number"]}</dd></div>
+            <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
+            <div><dt>Reason</dt><dd>{display(result["reason"], "No reason provided")}</dd></div>
+          </dl></section>
+          <section class="panel"><h2>Immutable history</h2><dl class="detail-list">
+            <div><dt>Parent workflow transaction</dt>
+              <dd>#{result["workflow_transaction_id"]}</dd></div>
+            <div><dt>Mark Empty action</dt><dd>#{result["empty_action_id"]}</dd></div>
+            <div><dt>Open Sealed action</dt><dd>#{result["open_action_id"]}</dd></div>
+            <div><dt>Load AMS action</dt><dd>#{result["load_action_id"]}</dd></div>
+          </dl></section>
+        </div>
+        <div class="form-actions"><a href="/inventory/filament/replace">Replace another spool</a>
+          <a class="primary-link" href="/inventory/filament/spools/{replacement["id"]}">
+            View {esc(replacement["permanent_id"])}</a></div>"""
+        return self._shell(
+            "Spool Replacement Complete", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Replacement complete</span>',
+        )
+
+    def _replacement_error(self, message: str) -> str:
+        content = f"""<section class="empty-state"><p class="eyebrow">No changes saved</p>
+          <h2>Spool replacement stopped</h2><p>{esc(message)}</p>
+          <a class="primary-link" href="/inventory/filament/replace">Start a fresh replacement</a>
+          </section>"""
+        return self._shell(
+            "Spool replacement stopped", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Replacement stopped</span>',
         )
 
     def _method_not_allowed(self) -> str:
@@ -645,7 +849,7 @@ def serve(database=DEFAULT_DB, host="127.0.0.1", port=8787) -> None:
         pass
     server = ThreadingHTTPServer((host, port), make_handler(app))
     print(f"THS Inventory System running at http://{host}:{port}")
-    print("Controlled receiving enabled. Existing inventory remains read only. Press Ctrl+C to stop.")
+    print("Controlled inventory workflows enabled. General editing remains unavailable. Press Ctrl+C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
