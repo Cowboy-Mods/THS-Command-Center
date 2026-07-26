@@ -63,6 +63,8 @@ Configuration and receiving:
 - `ensure_item_type`
 - `ensure_manufacturer`
 - `ensure_catalog_item`
+- `ensure_catalog_item_attribute`
+- `preview_next_human_id`
 - `add_individual_instance`
 - `add_stock_lot`
 
@@ -123,7 +125,7 @@ Future code must not:
 - update or delete historical action records;
 - claim an action is reversible without a concrete reverse action.
 
-The current dashboard remains read-only and opens SQLite with `mode=ro`.
+All dashboard queries remain read-only. The single receive-spool commit path opens a normal connection only inside the dedicated workflow and writes exclusively through this service.
 
 ## Verification
 
@@ -133,10 +135,9 @@ Run:
 py -3 -m unittest discover -v
 ```
 
-Dedicated service tests cover context validation, catalog setup, individual/quantity/lot policies, complete audit fields, immutable history, atomic rollback, moves, corrections, state changes, reservation/release, AMS load/unload, automated reversals, double-reversal rejection, importer integration, rejected-import rollback, and zero dashboard actions.
+Dedicated service tests cover context validation, catalog setup and attributes, individual/quantity/lot policies, complete audit fields, immutable history, atomic rollback, moves, corrections, state changes, reservation/release, AMS load/unload, automated reversals, double-reversal rejection, importer integration, rejected-import rollback, read-only routes, and the confirmed receive-spool workflow.
 
 ## Next checkpoint
 
-Cowboy and ChatGPT should review this service boundary before choosing the first editable workflow. The recommended first UI action is a narrow "receive verified sealed spool" workflow backed exclusively by `add_individual_instance`, not a general database editor.
-
+The first editable workflow is complete: [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md). The next checkpoint is a separate narrow **Open Existing Sealed Spool** workflow.
 
