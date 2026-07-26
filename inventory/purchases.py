@@ -114,6 +114,7 @@ class PurchaseRegistryService:
         sha256, file_size = self._file_identity(path)
         values = self._action_values("add_evidence", actor, purchase)
         values.update({
+            "evidence_uuid": str(uuid.uuid4()),
             "evidence_scope": scope, "evidence_type": evidence_type,
             "file_path": str(path), "sha256": sha256, "file_size": file_size,
             "caption": self._optional_text(form.get("caption"), 1000),
@@ -155,6 +156,7 @@ class PurchaseRegistryService:
                     raise PurchaseError("selected line does not belong to this purchase")
         values = self._action_values("link_maintenance", actor, purchase)
         values.update({
+            "link_uuid": str(uuid.uuid4()),
             "maintenance_record": dict(maintenance),
             "purchase_line": dict(line) if line else None,
             "relationship_type": relationship,
@@ -395,7 +397,8 @@ class PurchaseRegistryService:
             sha256,file_size,caption,document_date,added_by)
             VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (
-                str(uuid.uuid4()), values["purchase"]["id"], values["evidence_scope"],
+                values["evidence_uuid"], values["purchase"]["id"],
+                values["evidence_scope"],
                 values["evidence_type"], values["file_path"], sha256, file_size,
                 values["caption"], values["document_date"], values["actor"],
             ),
@@ -430,7 +433,7 @@ class PurchaseRegistryService:
             link_uuid,purchase_order_id,purchase_order_line_id,maintenance_record_id,
             relationship_type,note,linked_by) VALUES (?,?,?,?,?,?,?)""",
             (
-                str(uuid.uuid4()), values["purchase"]["id"],
+                values["link_uuid"], values["purchase"]["id"],
                 line["id"] if line else None, maintenance["id"],
                 values["relationship_type"], values["note"], values["actor"],
             ),

@@ -102,6 +102,7 @@ class PurchaseEvidenceAndMaintenanceLinkTests(unittest.TestCase):
                   self.scalar("SELECT COUNT(*) FROM purchase_history"))
         review = self.service.review_add_evidence(self.evidence_form())
         self.assertEqual(review["values"]["evidence_scope"], "purchase")
+        self.assertEqual(len(review["values"]["evidence_uuid"]), 36)
         self.assertEqual(len(review["values"]["sha256"]), 64)
         self.assertEqual(before, (
             self.scalar("SELECT COUNT(*) FROM purchase_evidence"),
@@ -109,14 +110,19 @@ class PurchaseEvidenceAndMaintenanceLinkTests(unittest.TestCase):
         ))
 
     def test_02_purchase_and_delivery_evidence_are_distinct(self):
+        purchase_review = self.service.review_add_evidence(self.evidence_form())
         purchase = self.service.commit_add_evidence(
-            self.service.review_add_evidence(self.evidence_form())["token"],
+            purchase_review["token"],
             confirmed=True,
         )
         delivery = self.service.commit_add_evidence(
             self.service.review_add_evidence(
                 self.evidence_form(evidence_scope="delivery", evidence_type="photo")
             )["token"], confirmed=True,
+        )
+        self.assertEqual(
+            purchase["snapshot"]["evidence_uuid"],
+            purchase_review["values"]["evidence_uuid"],
         )
         self.assertEqual((purchase["evidence_scope"], delivery["evidence_scope"]),
                          ("purchase", "delivery"))
@@ -147,9 +153,11 @@ class PurchaseEvidenceAndMaintenanceLinkTests(unittest.TestCase):
     def test_05_maintenance_link_preview_and_commit_preserve_meaning(self):
         review = self.service.review_link_maintenance(self.link_form())
         self.assertEqual(review["values"]["relationship_type"], "corrective_replacement")
+        self.assertEqual(len(review["values"]["link_uuid"]), 36)
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM purchase_maintenance_links"), 0)
         result = self.service.commit_link_maintenance(review["token"], confirmed=True)
         self.assertEqual(result["maintenance_number"], "THS-MNT-000001")
+        self.assertEqual(result["snapshot"]["link_uuid"], review["values"]["link_uuid"])
         self.assertEqual(self.scalar("SELECT COUNT(*) FROM purchase_maintenance_links"), 1)
 
     def test_06_wrong_purchase_line_is_rejected(self):

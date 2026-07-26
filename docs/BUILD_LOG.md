@@ -150,3 +150,10 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Normalized swatch lookup case and surrounding/repeated whitespace while
   preserving the unknown-color fallback.
 - Made no inventory or production database changes.
+
+## 2026-07-26 — Phase 2A signed UUID hardening
+
+- Moved proposed purchase-evidence and maintenance-link UUID generation into
+  the signed preview payload.
+- Commits now use the exact reviewed UUIDs, preventing identity changes between
+  preview and confirmation.
