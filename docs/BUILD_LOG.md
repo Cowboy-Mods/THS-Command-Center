@@ -1,5 +1,21 @@
 # THS Command Center Build Log
 
+## 2026-07-27 — Purchase Registry Receiving source checkpoint
+
+- Added additive migration 017 for controlled fulfillment state, immutable
+  receipts, line-specific receiving, evidence links, inventory links, and
+  derived outstanding quantities.
+- Added signed, expiring, zero-write status and receipt previews with permanent
+  identities, evidence revalidation, stale-state checks, replay protection,
+  sequence protection, and atomic rollback.
+- Added separate individual, quantity, lot, and non-inventory receiving
+  behavior through the Inventory Action Service.
+- Recorded the design rule that receiving means verified physical arrival only
+  and never implies installation, opening, assignment, loading, usage, or
+  consumption.
+- Kept `THS-PO-000001` and production inventory untouched during source
+  development.
+
 ## 2026-07-26 — Stage 2 Maintenance Registry production checkpoint
 
 ### Maintenance Registry completed

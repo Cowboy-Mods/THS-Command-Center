@@ -6,8 +6,8 @@
 - Branch: `feature/filament-manager-v1`
 - Live database: `C:\Users\Cowboy\Documents\THS-Command-Center-Data\inventory.sqlite3`
 - Schema: 16
-- Source commit before closeout documentation: `279a605dd3ca45be2b76caada2945d25b3a61cfc`
-- Full test baseline: 264 tests
+- Source base before receiving checkpoint: `b2893fddcfedf38f25e30d6d9a0d1b78f7a42b3a`
+- Full test baseline: 273 tests
 
 ## Verified production state
 
@@ -19,15 +19,18 @@
 - `THS-MNT-000001`: In progress, High severity.
 - THS Printer readiness: No unattended printing.
 
-## Next major development checkpoint
+## Current source checkpoint
 
-**Purchase Registry Receiving and Status Transitions**
+**Purchase Registry Receiving and Status Transitions — source foundation**
 
 Boundaries:
 
-- Begin with discovery and a source-only design checkpoint.
-- Do not infer delivery from purchase evidence.
-- Do not create inventory until a separately confirmed receipt.
+- Migration 017 and controlled source services are implemented.
+- Receiving means verified physical arrival only. It never implies installation,
+  opening, assignment, loading, usage, or consumption.
+- Do not apply migration 017 to production without a separate verified backup,
+  zero-write migration preview, and explicit approval.
+- Do not create inventory until a separately confirmed production receipt.
 - Keep receipt, stock creation, maintenance relevance, installation, and
   consumption as distinct facts.
 - Preserve signed expiring previews, explicit confirmation, replay protection,
@@ -37,9 +40,9 @@ Boundaries:
 
 ## Known risks and unresolved decisions
 
-- Partial purchase receiving and status-transition rules still need design.
-- Tracking behavior must differ safely for individual, quantity, lot, and
-  non-inventory purchase lines.
+- Production migration 017 remains unapplied.
+- `THS-PO-000001` catalog resolution and physical receiving remain separate
+  future approval checkpoints.
 - Historical Bambu purchases require reconciliation to prevent duplicate current
   inventory.
 - Secure Remote Dashboard is a Version 1 requirement but is not implemented;

@@ -142,7 +142,16 @@ class StageTwoCheckpointSafetyTests(unittest.TestCase):
             db.close()
         finally:
             db_module.MIGRATIONS = migrations
-        result = receiving_hardening_dry_run(old)
+        through_016 = self.root / "through-016-migrations"
+        through_016.mkdir()
+        for source in sorted(migrations.glob("*.sql")):
+            if source.name <= "016_legacy_order_receiving_hardening.sql":
+                (through_016 / source.name).write_bytes(source.read_bytes())
+        db_module.MIGRATIONS = through_016
+        try:
+            result = receiving_hardening_dry_run(old)
+        finally:
+            db_module.MIGRATIONS = migrations
         self.assertEqual(result["applied"], ["016_legacy_order_receiving_hardening.sql"])
         self.assertEqual(result["applied_again"], [])
         self.assertEqual(result["migration_count"], 16)

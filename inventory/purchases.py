@@ -89,6 +89,27 @@ class PurchaseRegistryService:
                 LEFT JOIN purchase_order_lines pol ON pol.id=pml.purchase_order_line_id
                 WHERE pml.purchase_order_id=? ORDER BY pml.id""", (purchase_id,)
             )]
+            receiving = db.execute(
+                """SELECT * FROM purchase_order_receiving_status
+                WHERE purchase_order_id=?""", (purchase_id,)
+            ).fetchone()
+            result["receiving_status"] = dict(receiving) if receiving else None
+            result["receipts"] = [dict(row) for row in db.execute(
+                """SELECT * FROM purchase_receipts
+                WHERE purchase_order_id=? ORDER BY recorded_at,id""",
+                (purchase_id,),
+            )]
+            result["line_receiving"] = [dict(row) for row in db.execute(
+                """SELECT plrs.*
+                FROM purchase_line_receiving_status plrs
+                WHERE plrs.purchase_order_id=?
+                ORDER BY plrs.line_number""", (purchase_id,)
+            )]
+            result["fulfillment_history"] = [dict(row) for row in db.execute(
+                """SELECT * FROM purchase_fulfillment_history
+                WHERE purchase_order_id=? ORDER BY occurred_at,id""",
+                (purchase_id,),
+            )]
             return result
 
     def review_add_evidence(self, form: dict) -> dict:
@@ -294,6 +315,11 @@ class PurchaseRegistryService:
                     values["total_cents"], values["notes"], values["actor"],
                 ),
             ).lastrowid
+            db.execute(
+                """INSERT INTO purchase_fulfillment_state(
+                purchase_order_id,transport_status) VALUES (?,'ordered')""",
+                (purchase_id,),
+            )
             for line in values["lines"]:
                 db.execute(
                     """INSERT INTO purchase_order_lines(

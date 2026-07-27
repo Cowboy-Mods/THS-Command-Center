@@ -42,6 +42,7 @@ Features
 - [Register Existing Open Spool](docs/inventory-system/REGISTER_EXISTING_OPEN_SPOOL.md)
 - [Printer Maintenance Registry and Backlog](docs/inventory-system/MAINTENANCE_REGISTRY.md)
 - [Runtime data, backups, and Git safety boundary](docs/inventory-system/RUNTIME_DATA_AND_BACKUPS.md)
+- [Purchase Registry Receiving and Status Transitions](docs/inventory-system/PURCHASE_REGISTRY_RECEIVING.md)
 - [Original Maeve Filament Manager plan](docs/filament-manager/MAEVE_FILAMENT_MANAGER_V1.md)
 
 ## Run the local inventory dashboard

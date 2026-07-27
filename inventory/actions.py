@@ -191,7 +191,7 @@ class InventoryActionService:
         permanent_id: str | None = None, serial_number: str | None = None,
         lot_number: str | None = None, condition: str = "new", expires_at: str | None = None,
         notes: str | None = None, verified: bool = False, reason: str | None = None,
-        order_ref: str | None = None,
+        order_ref: str | None = None, action_uuid: str | None = None,
     ) -> int:
         self._require_tracking(catalog_item_id, "individual")
         self._validate_quantities(original_quantity, remaining_quantity)
@@ -220,6 +220,7 @@ class InventoryActionService:
                 "add_individual_instance", "inventory_instance", row_id, human_id,
                 None, self._row("inventory_instances", row_id), True,
                 reverse_action="archive_instance", reason=reason, transaction_id=tx,
+                action_uuid=action_uuid,
             )
             return row_id
 
@@ -471,6 +472,7 @@ class InventoryActionService:
         self, catalog_item_id: int, *, location_id: int, quantity: float, unit_id: int,
         lot_number: str | None = None, condition: str = "new", expires_at: str | None = None,
         verified: bool = False, reason: str | None = None,
+        action_uuid: str | None = None,
     ) -> int:
         policy = self._tracking(catalog_item_id)
         if policy not in {"quantity", "lot"}:
@@ -497,6 +499,7 @@ class InventoryActionService:
                 "add_stock_lot", "stock_lot", row_id, lot_number, None,
                 self._row("stock_lots", row_id), True, reverse_action="archive_stock_lot",
                 reason=reason, transaction_id=tx,
+                action_uuid=action_uuid,
             )
             return row_id
 
@@ -1082,6 +1085,7 @@ class InventoryActionService:
         transaction_id: int | None = None, reverses_action_id: int | None = None,
         workflow_transaction_id: int | None = None,
         effective_at: str | None = None, request_nonce: str | None = None,
+        action_uuid: str | None = None,
     ) -> int:
         return self.db.execute(
             """INSERT INTO inventory_actions(action_uuid,occurred_at,actor,module,origin,action_type,reason,
@@ -1090,7 +1094,7 @@ class InventoryActionService:
             request_nonce)
             VALUES (?,COALESCE(?,CURRENT_TIMESTAMP),?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (
-                str(uuid.uuid4()), effective_at, self.context.actor, self.context.module,
+                action_uuid or str(uuid.uuid4()), effective_at, self.context.actor, self.context.module,
                 self.context.origin,
                 action_type, reason, int(reversible), reverse_action, entity_type, entity_id,
                 human_id, self._json(previous), self._json(new), transaction_id,

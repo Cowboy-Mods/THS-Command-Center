@@ -38,6 +38,9 @@ RECEIVING_HARDENING_PROTECTED_TABLES = PURCHASE_PHASE2A_PROTECTED_TABLES + (
     "purchase_evidence", "purchase_maintenance_links",
     "order_delivery_evidence", "order_delivery_evidence_history",
 )
+PURCHASE_RECEIVING_PROTECTED_TABLES = RECEIVING_HARDENING_PROTECTED_TABLES + (
+    "catalog_item_history", "receiving_batch_delivery_evidence",
+)
 
 
 class CheckpointError(RuntimeError):
@@ -302,6 +305,100 @@ def receiving_hardening_dry_run(database: Path) -> dict:
         }
 
 
+def purchase_receiving_dry_run(database: Path) -> dict:
+    """Verify migration 017 on a copy without receiving or changing production."""
+    before = verify_database(database)
+    with closing(readonly(database)) as db:
+        protected_before = {
+            table: table_fingerprint(db, table)
+            for table in PURCHASE_RECEIVING_PROTECTED_TABLES
+        }
+        purchase_count = db.execute(
+            "SELECT COUNT(*) FROM purchase_orders"
+        ).fetchone()[0]
+    with tempfile.TemporaryDirectory(prefix="ths-purchase-receiving-") as folder:
+        candidate = Path(folder) / database.name
+        shutil.copy2(database, candidate)
+        if sha256(candidate) != before["sha256"]:
+            raise CheckpointError(
+                "purchase-receiving candidate hash does not match source"
+            )
+        db = connect(candidate)
+        try:
+            applied = migrate(db)
+            applied_again = migrate(db)
+        finally:
+            db.close()
+        if any(name != "017_purchase_registry_receiving.sql" for name in applied):
+            raise CheckpointError(
+                "unexpected pending migration in purchase-receiving checkpoint"
+            )
+        with closing(readonly(candidate)) as db:
+            protected_after = {
+                table: table_fingerprint(db, table)
+                for table in PURCHASE_RECEIVING_PROTECTED_TABLES
+            }
+            tables = {
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            required = {
+                "purchase_fulfillment_state",
+                "purchase_fulfillment_history",
+                "purchase_receipts",
+                "purchase_receipt_lines",
+                "purchase_receipt_evidence",
+                "purchase_receipt_inventory_links",
+            }
+            new_counts = {
+                table: db.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for table in required
+            }
+            integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
+            quick = db.execute("PRAGMA quick_check").fetchone()[0]
+            foreign_keys = db.execute("PRAGMA foreign_key_check").fetchall()
+            migration_count = db.execute(
+                "SELECT COUNT(*) FROM schema_migrations"
+            ).fetchone()[0]
+        if protected_before != protected_after:
+            raise CheckpointError(
+                "purchase-receiving migration changed protected content"
+            )
+        if not required.issubset(tables):
+            raise CheckpointError(
+                "purchase-receiving candidate is missing required tables"
+            )
+        if new_counts["purchase_fulfillment_state"] != purchase_count:
+            raise CheckpointError(
+                "purchase-receiving projection count does not match purchases"
+            )
+        receipt_tables = set(required) - {"purchase_fulfillment_state"}
+        if any(new_counts[table] for table in receipt_tables):
+            raise CheckpointError(
+                "purchase-receiving migration created receipt or history records"
+            )
+        if integrity != "ok" or quick != "ok" or foreign_keys:
+            raise CheckpointError(
+                "purchase-receiving candidate integrity verification failed"
+            )
+        if applied and migration_count != before["migrations"] + 1:
+            raise CheckpointError(
+                "purchase-receiving migration did not advance exactly one version"
+            )
+        return {
+            "before": before,
+            "applied": applied,
+            "applied_again": applied_again,
+            "migration_count": migration_count,
+            "integrity": integrity,
+            "quick_check": quick,
+            "foreign_key_violations": len(foreign_keys),
+            "protected": protected_after,
+            "new_table_counts": new_counts,
+        }
+
+
 def dry_run(database: Path) -> dict:
     before = verify_database(database)
     with tempfile.TemporaryDirectory(prefix="ths-stage2-") as folder:
@@ -360,9 +457,24 @@ def main(argv=None) -> int:
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--backup-directory", type=Path)
+    parser.add_argument(
+        "--purchase-receiving-preview", action="store_true",
+        help="validate only migration 017 against a temporary copy",
+    )
     args = parser.parse_args(argv)
     try:
-        if args.apply:
+        if args.purchase_receiving_preview:
+            if args.apply:
+                parser.error("--purchase-receiving-preview cannot be combined with --apply")
+            result = purchase_receiving_dry_run(args.database)
+            print(
+                "SAFE PURCHASE RECEIVING PREVIEW: "
+                + (", ".join(result["applied"]) or "already current")
+            )
+            print(f"SOURCE SHA256: {result['before']['sha256']}")
+            print(f"MIGRATIONS: {result['before']['migrations']} -> {result['migration_count']}")
+            print(f"NEW TABLE COUNTS: {result['new_table_counts']}")
+        elif args.apply:
             if not args.backup_directory:
                 parser.error("--backup-directory is required with --apply")
             result = apply_checkpoint(args.database, args.backup_directory)
