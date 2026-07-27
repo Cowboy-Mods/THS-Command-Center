@@ -5,9 +5,31 @@
 - Repository: `C:\Users\Cowboy\Documents\GitHub\THS-Command-Center`
 - Branch: `feature/filament-manager-v1`
 - Live database: `C:\Users\Cowboy\Documents\THS-Command-Center-Data\inventory.sqlite3`
-- Schema: 16
-- Source base before receiving checkpoint: `b2893fddcfedf38f25e30d6d9a0d1b78f7a42b3a`
-- Full test baseline: 273 tests
+- Production schema: 17
+- Equipment Registry source base: `4803bb29b4f251f1013c70d3f9c112dc66d8a11a`
+- Full test baseline before Equipment Registry: 273 tests
+
+## Equipment Registry v1 source checkpoint
+
+- Migration 018 and `EquipmentRegistryService` exist on the feature branch only.
+- Migration 018 seeds reference vocabulary and creates zero equipment and zero
+  telemetry rows.
+- Permanent identity uses immutable UUIDs and `THS-EQP-######` numbers.
+- The legacy `equipment` table remains the AMS slot structure.
+- Signed registration and relationship previews are expiring and zero-write;
+  confirmation is atomic and rejects stale, tampered, replayed, duplicate, or
+  sequence-conflicted submissions.
+- Parent/child movement preserves immutable relationship history.
+- Operational status, maintenance readiness, restrictions, stable capabilities,
+  and telemetry remain separate.
+- The P1S built-in camera is an embedded capability/component with no separate
+  equipment identity. External cameras remain independent equipment records.
+- Bambu, camera-viewing, and print-correlation types are future protocol seams
+  only. No API, MQTT, polling, streaming, or credential storage exists.
+- Migration 018 must not be applied to production without a separately approved
+  Checkpoint C backup, preview, migration, validation, and rollback procedure.
+- P1S, AMS, camera, sensor, console, network-equipment, purchase, receipt, and
+  inventory onboarding remain unauthorized.
 
 ## Verified production state
 

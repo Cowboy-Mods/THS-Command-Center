@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
-from .db import connect, migrate
+from .db import MIGRATIONS, connect, migrate
 
 
 CORE_COUNTS = (
@@ -325,8 +325,26 @@ def purchase_receiving_dry_run(database: Path) -> dict:
             )
         db = connect(candidate)
         try:
-            applied = migrate(db)
-            applied_again = migrate(db)
+            target = "017_purchase_registry_receiving.sql"
+            target_path = MIGRATIONS / target
+            required_prior = {
+                path.name for path in sorted(MIGRATIONS.glob("*.sql"))
+                if path.name < target
+            }
+            present = {
+                row[0] for row in db.execute("SELECT name FROM schema_migrations")
+            }
+            if not required_prior.issubset(present):
+                raise CheckpointError(
+                    "purchase-receiving candidate is missing a prior migration"
+                )
+            applied = []
+            if target not in present:
+                db.executescript(target_path.read_text(encoding="utf-8"))
+                db.execute("INSERT INTO schema_migrations(name) VALUES (?)", (target,))
+                db.commit()
+                applied.append(target)
+            applied_again = []
         finally:
             db.close()
         if any(name != "017_purchase_registry_receiving.sql" for name in applied):

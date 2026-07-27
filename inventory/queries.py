@@ -454,6 +454,98 @@ class InventoryQueries:
                 units.append(unit)
             return units
 
+    def equipment_list(self) -> list[dict[str, Any]]:
+        """Return stable equipment facts with separate readiness/restriction projections."""
+        with closing(self.connect()) as db:
+            return [
+                dict(row) for row in db.execute(
+                    """SELECT er.id,er.equipment_uuid,er.equipment_number,
+                    er.display_name,et.type_code,et.display_name type_name,
+                    es.subtype_code,es.display_name subtype_name,m.name manufacturer,
+                    er.model,er.lifecycle_state,er.operational_status,
+                    l.name current_location,err.readiness_state,
+                    err.derived_restriction,er.state_version,er.updated_at
+                    FROM equipment_registry er
+                    JOIN equipment_types et ON et.id=er.equipment_type_id
+                    LEFT JOIN equipment_subtypes es ON es.id=er.equipment_subtype_id
+                    LEFT JOIN manufacturers m ON m.id=er.manufacturer_id
+                    LEFT JOIN locations l ON l.id=er.current_location_id
+                    LEFT JOIN equipment_registry_readiness err ON err.equipment_id=er.id
+                    ORDER BY lower(er.display_name),er.id"""
+                )
+            ]
+
+    def equipment_detail(self, equipment_id: int) -> dict[str, Any] | None:
+        """Return one equipment record without reading or changing live devices."""
+        with closing(self.connect()) as db:
+            row = db.execute(
+                """SELECT er.*,et.type_code,et.display_name type_name,
+                es.subtype_code,es.display_name subtype_name,m.name manufacturer,
+                l.name current_location,err.readiness_state,err.derived_restriction
+                FROM equipment_registry er
+                JOIN equipment_types et ON et.id=er.equipment_type_id
+                LEFT JOIN equipment_subtypes es ON es.id=er.equipment_subtype_id
+                LEFT JOIN manufacturers m ON m.id=er.manufacturer_id
+                LEFT JOIN locations l ON l.id=er.current_location_id
+                LEFT JOIN equipment_registry_readiness err ON err.equipment_id=er.id
+                WHERE er.id=?""", (equipment_id,)
+            ).fetchone()
+            if not row:
+                return None
+            result = dict(row)
+            result["capabilities"] = [
+                dict(item) for item in db.execute(
+                    """SELECT ect.capability_code,ect.display_name,
+                    ec.support_state,ec.source,ec.configuration_metadata,
+                    ec.verified_at,ec.verified_by
+                    FROM equipment_capabilities ec
+                    JOIN equipment_capability_types ect
+                      ON ect.id=ec.capability_type_id
+                    WHERE ec.equipment_id=? ORDER BY ect.capability_code""",
+                    (equipment_id,),
+                )
+            ]
+            result["children"] = [
+                dict(item) for item in db.execute(
+                    """SELECT * FROM equipment_current_relationships
+                    WHERE parent_equipment_id=? ORDER BY lower(child_name)""",
+                    (equipment_id,),
+                )
+            ]
+            result["parent"] = next(iter([
+                dict(item) for item in db.execute(
+                    """SELECT * FROM equipment_current_relationships
+                    WHERE child_equipment_id=?""", (equipment_id,)
+                )
+            ]), None)
+            result["connections"] = [
+                dict(item) for item in db.execute(
+                    """SELECT * FROM equipment_current_connections
+                    WHERE source_equipment_id=? OR target_equipment_id=?
+                    ORDER BY id""", (equipment_id, equipment_id)
+                )
+            ]
+            telemetry = db.execute(
+                """SELECT *,CASE WHEN expires_at<=CURRENT_TIMESTAMP THEN 1 ELSE 0 END
+                AS stale FROM equipment_telemetry_state WHERE equipment_id=?""",
+                (equipment_id,),
+            ).fetchone()
+            result["telemetry"] = dict(telemetry) if telemetry else None
+            return result
+
+    def equipment_relationships(self) -> list[dict[str, Any]]:
+        with closing(self.connect()) as db:
+            return [dict(row) for row in db.execute(
+                """SELECT * FROM equipment_current_relationships
+                ORDER BY lower(parent_name),lower(child_name)"""
+            )]
+
+    def equipment_connections(self) -> list[dict[str, Any]]:
+        with closing(self.connect()) as db:
+            return [dict(row) for row in db.execute(
+                "SELECT * FROM equipment_current_connections ORDER BY id"
+            )]
+
     @staticmethod
     def _low_stock_count(db: sqlite3.Connection) -> int:
         return db.execute(

@@ -1,5 +1,23 @@
 # THS Command Center Build Log
 
+## 2026-07-27 — Equipment Registry v1 source foundation
+
+- Added additive Migration 018 with permanent `THS-EQP` identity, controlled
+  types/subtypes, stable equipment facts, embedded capabilities, normalized
+  interfaces/connections, provenance bridges, and immutable histories.
+- Preserved the legacy AMS `equipment` and `equipment_slots` structures.
+- Added signed, expiring, zero-write registration and relationship previews with
+  preview-bound identities, stale/tamper/replay/duplicate/sequence protection,
+  atomic commits, and audit events.
+- Kept operational status, maintenance readiness, derived restrictions, stable
+  capabilities, and freshness-aware telemetry as separate concepts.
+- Added future Bambu, camera-viewing, and print-correlation protocol seams
+  without device communication or stream handling.
+- Added read-only equipment list/detail/relationship/connection projections and
+  focused temporary-database tests.
+- Created no equipment or telemetry rows and did not apply Migration 018 to
+  production.
+
 ## 2026-07-27 — Purchase Registry Receiving source checkpoint
 
 - Added additive migration 017 for controlled fulfillment state, immutable
