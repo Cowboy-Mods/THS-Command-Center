@@ -308,3 +308,17 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   audit identities through commit.
 - Production remains intentionally unchanged for `THS-PO-000001` (Ordered) and
   `THS-MNT-000001` (In progress, No unattended printing).
+# 2026-07-28 — THS-FIL-000032 / THS-FIL-000039 zero-write correction preview
+
+- Added a reusable read-only correction-preview generator for the flexible
+  schema-19 service workflow.
+- Inspected production schema 18 with immutable/query-only SQLite access.
+- Documented the two spool records, AMS assignments, relevant immutable
+  history, exact proposed row changes, confirmation questions, preconditions,
+  rollback, and post-correction verification.
+- Focused correction/service/UI tests passed: 26.
+- Full regression suite passed: 321.
+- Production SHA-256 remained
+  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`;
+  schema remained 18, integrity was `ok`, and foreign-key violations were zero.
+- Production Migration 019 and the spool correction were not applied.
