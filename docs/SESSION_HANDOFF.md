@@ -11,6 +11,24 @@
 
 ## Equipment Registry v1 source checkpoint
 
+### Checkpoint D production onboarding
+
+- Production schema remains 18.
+- `THS-EQP-000001` is Cowboy's Bambu Lab P1S.
+- Equipment UUID: `6e55b13d-25a2-4c89-87d6-8b905bf2589e`.
+- Lifecycle: installed; operational status: operating.
+- Built-in camera is one embedded capability/component, not equipment.
+- Equipment Registry contains exactly one equipment record, zero AMS equipment,
+  zero external cameras, zero telemetry, and zero parent/child relationships.
+- Manufacturer serial, THS asset identifier, and exact installation/
+  commissioning timestamps remain unknown/null.
+- Verified ownership, 2025-05-21 purchase date, THS print-room location, Wi-Fi,
+  AMS support, and primary-production note are preserved in notes.
+- Legacy maintenance readiness remains unchanged and unbridged.
+- Pre-onboarding rollback backup:
+  `C:\Users\Cowboy\Documents\THS-Command-Center-Data\backups\inventory-pre-p1s-onboarding-20260727-205731.sqlite3`.
+- AMS 1 and AMS 2 remain separate future onboarding checkpoints.
+
 - Migration 018 and `EquipmentRegistryService` exist on the feature branch only.
 - Migration 018 seeds reference vocabulary and creates zero equipment and zero
   telemetry rows.

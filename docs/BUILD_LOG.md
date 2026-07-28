@@ -1,5 +1,18 @@
 # THS Command Center Build Log
 
+## 2026-07-27 — First Equipment Registry onboarding
+
+- Registered Cowboy's Bambu Lab P1S as `THS-EQP-000001` through the signed,
+  zero-write-preview Equipment Registry workflow.
+- Recorded one installed/operating 3D-printer record with verified ownership,
+  purchase date, THS print-room location, Wi-Fi support, AMS support, and notes.
+- Kept unknown serial, THS asset identifier, and exact installation/
+  commissioning timestamps null.
+- Recorded the built-in camera only as a supported embedded capability/component.
+- Created one immutable equipment-history row and one general audit event.
+- Created no AMS, camera equipment, telemetry, relationship, interface,
+  connection, purchase, receipt, inventory, or assignment records.
+
 ## 2026-07-27 — Equipment Registry v1 source foundation
 
 - Added additive Migration 018 with permanent `THS-EQP` identity, controlled
