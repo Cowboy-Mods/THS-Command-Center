@@ -322,3 +322,20 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`;
   schema remained 18, integrity was `ok`, and foreign-key violations were zero.
 - Production Migration 019 and the spool correction were not applied.
+# 2026-07-28 — Migration 019 production deployment readiness
+
+- Captured Cowboy's physical confirmations for the later 032/039 correction.
+- Reverified production read-only at schema 18 with integrity `ok`, zero
+  foreign-key violations, and SHA-256
+  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`.
+- Created and verified a byte-matched external rollback backup.
+- Rehearsed only Migration 019 on a verified production copy: candidate reached
+  schema 19; all 75 protected table fingerprints and both target spools remained
+  unchanged.
+- Rehearsed restoration from the external backup and recovered the exact
+  schema-18 baseline hash.
+- Documented the exact deployment, validation, stale-state stop, and rollback
+  procedures. Production deployment and the spool correction remain blocked
+  pending separate explicit authorization.
+- Focused Migration 019/service/UI/correction-preview tests passed: 34.
+- Full regression suite passed: 321.
