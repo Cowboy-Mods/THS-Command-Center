@@ -1027,6 +1027,95 @@ class InventoryActionService:
 
         return self._atomic(work)
 
+    def preview_flexible_spool_replacement(
+        self, current_instance_id: int, *, outgoing_disposition: str,
+        outgoing_destination_location_id: int | None = None,
+        outgoing_destination_slot_id: int | None = None,
+        incoming_disposition: str, incoming_instance_id: int | None = None,
+        incoming_source_location_id: int | None = None,
+        incoming_source_slot_id: int | None = None,
+        incoming_destination_slot_id: int | None = None,
+        reason: str | None, review_nonce: str,
+        print_job_name: str | None = None, approximate_layer: int | None = None,
+        printer: str | None = None, plate: str | None = None,
+        operational_note: str | None = None,
+    ) -> dict:
+        """Validate the real service operation and return a stable zero-write plan."""
+        preview_savepoint = f"flexible_preview_{uuid.uuid4().hex}"
+        self.db.execute(f"SAVEPOINT {preview_savepoint}")
+        try:
+            current_before = self._instance(current_instance_id)
+            current_assignment = self._active_ams_assignment(current_instance_id)
+            incoming_before = (
+                self._instance(incoming_instance_id)
+                if incoming_instance_id is not None else None
+            )
+            incoming_assignment = (
+                self._active_ams_assignment(incoming_instance_id)
+                if incoming_instance_id is not None else None
+            )
+            result = self.flexibly_replace_active_filament_spool(
+                current_instance_id,
+                outgoing_disposition=outgoing_disposition,
+                outgoing_destination_location_id=outgoing_destination_location_id,
+                outgoing_destination_slot_id=outgoing_destination_slot_id,
+                incoming_disposition=incoming_disposition,
+                incoming_instance_id=incoming_instance_id,
+                incoming_source_location_id=incoming_source_location_id,
+                incoming_source_slot_id=incoming_source_slot_id,
+                incoming_destination_slot_id=incoming_destination_slot_id,
+                reason=reason,
+                review_nonce=review_nonce,
+                print_job_name=print_job_name,
+                approximate_layer=approximate_layer,
+                printer=printer,
+                plate=plate,
+                operational_note=operational_note,
+            )
+            actions = [
+                {
+                    "action_type": row["action_type"],
+                    "entity_id": row["affected_entity_id"],
+                    "human_id": row["affected_human_id"],
+                }
+                for row in self.db.execute(
+                    """SELECT action_type,affected_entity_id,affected_human_id
+                    FROM inventory_actions WHERE workflow_transaction_id=?
+                    ORDER BY id""",
+                    (result["workflow_transaction_id"],),
+                )
+            ]
+            plan = {
+                "current_before": current_before,
+                "current_assignment": (
+                    dict(current_assignment) if current_assignment else None
+                ),
+                "incoming_before": incoming_before,
+                "incoming_assignment": (
+                    dict(incoming_assignment) if incoming_assignment else None
+                ),
+                "outgoing_disposition": outgoing_disposition,
+                "outgoing_destination_location": self._location_snapshot(
+                    outgoing_destination_location_id
+                ),
+                "outgoing_destination_slot": self._slot_snapshot(
+                    outgoing_destination_slot_id
+                ),
+                "incoming_disposition": incoming_disposition,
+                "incoming_source_location": self._location_snapshot(
+                    incoming_source_location_id
+                ),
+                "incoming_source_slot": self._slot_snapshot(incoming_source_slot_id),
+                "incoming_destination_slot": self._slot_snapshot(
+                    incoming_destination_slot_id
+                ),
+                "actions": actions,
+            }
+            return plan
+        finally:
+            self.db.execute(f"ROLLBACK TO {preview_savepoint}")
+            self.db.execute(f"RELEASE {preview_savepoint}")
+
     def initialize_verified_ams_state(
         self, instance_id: int, slot_id: int, *, reason: str | None,
         effective_at: str, request_nonce: str,
@@ -1451,6 +1540,31 @@ class InventoryActionService:
                 "outgoing storage destination must be an active storage location"
             )
         return row
+
+    def _location_snapshot(self, location_id: int | None):
+        if location_id is None:
+            return None
+        row = self.db.execute(
+            "SELECT id,parent_id,name,kind,slot_number,archived_at "
+            "FROM locations WHERE id=?",
+            (location_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def _slot_snapshot(self, slot_id: int | None):
+        if slot_id is None:
+            return None
+        row = self.db.execute(
+            """SELECT es.id,es.location_id,e.name equipment_name,es.slot_number,
+            aa.instance_id occupant_instance_id,ii.permanent_id occupant_permanent_id
+            FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+            LEFT JOIN ams_assignments aa
+              ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
+            LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
+            WHERE es.id=?""",
+            (slot_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
     def _require(self, table: str, row_id: int, label: str) -> None:
         if table not in {"categories", "units", "locations", "item_types"}:

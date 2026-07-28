@@ -1,5 +1,20 @@
 # THS Command Center Build Log
 
+## 2026-07-28 — Flexible spool replacement guided UI
+
+- Expanded the guided replacement form to support outgoing Empty, storage
+  return, or AMS movement and incoming Sealed, Open, or None outcomes.
+- Added explicit storage and AMS source/destination controls, a service-generated
+  zero-write final review, signed version-2 plans, stale-state revalidation, and
+  friendly zero-write failure pages.
+- Preserved version-1 sealed-replacement review and completion compatibility.
+- Added a schema-18 safety gate so the flexible form is unavailable until
+  Migration 019 receives a separate production deployment.
+- Added 12 focused UI tests; wider UI/filament coverage passes 183 tests and the
+  full regression suite passes 318 tests.
+- Made no production schema/data, purple-color, AMS-onboarding, or main-branch
+  changes.
+
 ## 2026-07-28 — Flexible spool replacement service layer
 
 - Added the schema-19 `flexibly_replace_active_filament_spool` service contract

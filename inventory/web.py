@@ -791,7 +791,7 @@ class InventoryWebApp:
         </a>
         <a href="/inventory/filament/replace">
           <strong>Replace Active Filament Spool</strong>
-          <span>Empty, open, and load through one guided workflow.</span>
+          <span>Empty, store, move, replace, or leave the slot empty atomically.</span>
         </a>
         <a href="/inventory/filament/receive">
           <strong>Receive Verified Sealed Spool</strong>
@@ -870,7 +870,7 @@ class InventoryWebApp:
             <a class="workflow-card" href="/inventory/filament/replace">
               <span class="workflow-number">02</span><div>
               <h3>Replace Active Filament Spool</h3>
-              <p>Mark the active spool Empty, open its sealed replacement, and load it atomically.</p>
+              <p>Choose the outgoing result and a sealed, open, or no replacement atomically.</p>
               <strong>Start workflow →</strong></div>
             </a>
             <a class="workflow-card" href="/inventory/filament/receive">
@@ -1264,21 +1264,37 @@ class InventoryWebApp:
 
     def _replacement_form(self, filters: dict[str, str]) -> str:
         data = self.replacement.options(filters)
-        filter_options = lambda values, selected: "".join(
-            f'<option value="{esc(value)}"{" selected" if value == selected else ""}>'
-            f'{esc(value)}</option>' for value in values
-        )
+        if not data["schema19_ready"]:
+            content = """
+            <section class="empty-state">
+              <p class="eyebrow">Schema update required</p>
+              <h2>Flexible replacement is not enabled yet</h2>
+              <p>Migration 019 must be applied through its separately authorized
+              production checkpoint before this guided workflow can be used.</p>
+              <a class="primary-link" href="/inventory/filament">Return to filament inventory</a>
+            </section>"""
+            return self._shell(
+                "Flexible Replacement Not Enabled", content,
+                '<a href="/">Dashboard</a> / '
+                '<a href="/inventory/filament">Filament</a> / '
+                '<span aria-current="page">Replacement unavailable</span>',
+            )
         current_options = "".join(
             f'<option value="{s["id"]}">{esc(s["permanent_id"])} — '
             f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} — '
             f'{esc(s["equipment_name"])} Slot {s["slot_number"]}</option>'
             for s in data["current_spools"]
         )
-        replacement_options = "".join(
+        incoming_options = "".join(
             f'<option value="{s["id"]}">{esc(s["permanent_id"])} — '
             f'{esc(s["manufacturer"])} {esc(s["product_line"])} {esc(s["color"])} — '
-            f'{esc(s["material"])}</option>'
-            for s in data["replacement_spools"]
+            f'{esc("Open" if s["state"] == "loaded" else s["state"].title())}'
+            f'{(" in " + esc(s["equipment_name"]) + " Slot " + str(s["slot_number"])) if s["slot_id"] else ""}'
+            f'</option>' for s in data["incoming_spools"]
+        )
+        storage_options = "".join(
+            f'<option value="{location["id"]}">{esc(location["name"])}</option>'
+            for location in data["storage_locations"]
         )
         slot_options = "".join(
             f'<option value="{slot["id"]}">{esc(slot["equipment_name"])} '
@@ -1293,49 +1309,69 @@ class InventoryWebApp:
         )
         content = f"""
         <div class="notice"><strong>One guided, atomic shop operation</strong>
-          <p>The outgoing spool is emptied, one sealed spool is opened, and that replacement is loaded.
-          Existing inventory cannot be generally edited here.</p></div>
+          <p>Choose what physically happened to the outgoing spool and whether a
+          sealed, open, or no replacement entered an AMS slot. The exact service
+          plan is shown before anything is saved.</p></div>
         {no_active}
-        <form class="filter-panel compact-filter" method="get"
-          action="/inventory/filament/replace" role="search">
-          <label class="search-field"><span>Find sealed replacement</span>
-            <input type="search" name="q" value="{esc(data["filters"]["q"])}"
-              placeholder="THS-FIL ID, manufacturer, material, or color"></label>
-          <label><span>Manufacturer</span><select name="manufacturer">
-            <option value="">All manufacturers</option>
-            {filter_options(data["manufacturers"], data["filters"]["manufacturer"])}</select></label>
-          <label><span>Material</span><select name="material">
-            <option value="">All materials</option>
-            {filter_options(data["materials"], data["filters"]["material"])}</select></label>
-          <label><span>Color</span><select name="color"><option value="">All colors</option>
-            {filter_options(data["colors"], data["filters"]["color"])}</select></label>
-          <div class="filter-actions"><button type="submit">Filter sealed spools</button>
-            <a href="/inventory/filament/replace">Clear</a></div>
-        </form>
         <form class="receive-form replacement-form" method="post"
           action="/inventory/filament/replace/review">
-          <fieldset><legend>1. Select the currently active spool</legend>
+          <fieldset><legend>1. Outgoing active spool</legend>
             <label><span>Loaded spool</span><select name="current_instance_id" required>
               <option value="">Select the spool currently installed</option>
               {current_options}</select></label>
-            <label class="choice confirm-choice"><input type="checkbox"
-              name="confirm_empty" value="yes" required>
-              <span><strong>This spool is now empty.</strong>
-              <small>The spool will be removed from its active AMS slot and archived as Empty.</small></span>
-            </label>
+            <label><span>What happened to it?</span>
+              <select name="outgoing_disposition" required>
+                <option value="">Select the outgoing result</option>
+                <option value="empty">Empty — remove and mark Empty</option>
+                <option value="storage">Partially used — return Open to storage</option>
+                <option value="ams_slot">Partially used — move Open to another AMS slot</option>
+              </select></label>
+            <div class="form-grid">
+              <label><span>Storage destination (storage result only)</span>
+                <select name="outgoing_destination_location_id">
+                  <option value="">Select open-spool storage</option>
+                  {storage_options}</select></label>
+              <label><span>AMS destination (AMS move only)</span>
+                <select name="outgoing_destination_slot_id">
+                  <option value="">Select another AMS slot</option>
+                  {slot_options}</select></label>
+            </div>
+            <p class="field-help">Empty requires no destination. Select exactly
+              the destination required by the outgoing result.</p>
           </fieldset>
-          <fieldset><legend>2. Select a sealed replacement</legend>
-            <label><span>Eligible sealed spool</span><select name="replacement_instance_id" required>
-              <option value="">Select one sealed physical spool</option>
-              {replacement_options}</select></label>
-            <p class="field-help">{len(data["replacement_spools"])} sealed spool(s) match the current filters.</p>
+          <fieldset><legend>2. Incoming replacement outcome</legend>
+            <label><span>What entered an AMS slot?</span>
+              <select name="incoming_disposition" required>
+                <option value="">Select the incoming result</option>
+                <option value="sealed">A sealed spool — open and load it</option>
+                <option value="open">An already-open spool — move and load it</option>
+                <option value="none">No replacement — leave the slot empty</option>
+              </select></label>
+            <label><span>Incoming spool (blank for no replacement)</span>
+              <select name="incoming_instance_id">
+                <option value="">No incoming spool</option>{incoming_options}</select></label>
+            <div class="form-grid">
+              <label><span>Incoming source storage location</span>
+                <select name="incoming_source_location_id">
+                  <option value="">Not sourced from storage</option>
+                  {storage_options}</select></label>
+              <label><span>Incoming source AMS slot</span>
+                <select name="incoming_source_slot_id">
+                  <option value="">Not sourced from another AMS slot</option>
+                  {slot_options}</select></label>
+            </div>
+            <p class="field-help">For a sealed or open spool, select exactly one
+              source matching its current recorded location. For no replacement,
+              leave the spool and both source fields blank.</p>
           </fieldset>
-          <fieldset><legend>3. Confirm the destination</legend>
-            <label><span>AMS destination</span><select name="destination_slot_id">
+          <fieldset><legend>3. Incoming destination and context</legend>
+            <label><span>Incoming AMS destination</span>
+              <select name="incoming_destination_slot_id">
               <option value="">Same AMS unit and slot as the outgoing spool (default)</option>
               {slot_options}</select></label>
-            <p class="field-help">Choose another slot only if the replacement was physically installed there.
-              Occupied slots are rejected unless occupied by the outgoing spool.</p>
+            <p class="field-help">Occupied destinations are accepted only when
+              this same atomic operation vacates them, including a verified
+              two-slot swap.</p>
             <div class="form-grid">
               <label><span>Actor</span><input name="actor" value="Cowboy"
                 maxlength="100" required></label>
@@ -1357,17 +1393,19 @@ class InventoryWebApp:
             </details>
           </fieldset>
           <div class="form-actions"><a href="/inventory/filament">Cancel</a>
-            <button type="submit">Preview complete replacement</button></div>
+            <button type="submit">Review complete operation</button></div>
         </form>"""
         return self._shell(
             "Replace Active Filament Spool", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             '<span aria-current="page">Replace active spool</span>',
-            description="Empty, open, and load—three audited actions, one confirmed operation.",
+            description="Empty, store, move, open, or leave empty—one reviewed atomic operation.",
         )
 
     def _replacement_review(self, review) -> str:
         v = review.values
+        if v.get("version") == 2:
+            return self._replacement_review_flexible(review)
         current, replacement, destination = (
             v["current"], v["replacement"], v["destination"]
         )
@@ -1419,6 +1457,8 @@ class InventoryWebApp:
         )
 
     def _replacement_complete(self, result: dict) -> str:
+        if result.get("version") == 2:
+            return self._replacement_complete_flexible(result)
         current, replacement, destination = (
             result["current"], result["replacement"], result["destination"]
         )
@@ -1453,6 +1493,156 @@ class InventoryWebApp:
             "Spool Replacement Complete", content,
             '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
             '<span aria-current="page">Replacement complete</span>',
+        )
+
+    def _replacement_review_flexible(self, review) -> str:
+        v, plan = review.values, review.values["plan"]
+        current = plan["current_before"]
+        assignment = plan["current_assignment"]
+        outgoing_destination = (
+            plan["outgoing_destination_location"]
+            or plan["outgoing_destination_slot"]
+        )
+        if v["outgoing_disposition"] == "empty":
+            outgoing_label = "Mark Empty and remove from AMS"
+        elif v["outgoing_disposition"] == "storage":
+            outgoing_label = f'Return Open to {esc(outgoing_destination["name"])}'
+        else:
+            outgoing_label = (
+                f'Move Open to {esc(outgoing_destination["equipment_name"])} '
+                f'Slot {outgoing_destination["slot_number"]}'
+            )
+        incoming = plan["incoming_before"]
+        if v["incoming_disposition"] == "none":
+            incoming_summary = """
+              <article><span class="step-number">2</span><div>
+                <p>Incoming result</p><h2>No replacement</h2>
+                <small>No incoming spool identity or destination will be recorded.</small>
+              </div></article>"""
+        else:
+            source = (
+                plan["incoming_source_location"]
+                or plan["incoming_source_slot"]
+            )
+            source_label = (
+                source["name"] if "name" in source
+                else f'{source["equipment_name"]} Slot {source["slot_number"]}'
+            )
+            destination = plan["incoming_destination_slot"]
+            incoming_summary = f"""
+              <article><span class="step-number">2</span><div>
+                <p>{esc(v["incoming_disposition"].title())} incoming spool</p>
+                <h2>{esc(incoming["permanent_id"])}</h2>
+                <span>From {esc(source_label)}</span>
+                <small>Load into {esc(destination["equipment_name"])}
+                  Slot {destination["slot_number"]}</small>
+              </div></article>"""
+        actions = "".join(
+            f'<li>{esc(action["action_type"].replace("_", " ").title())} — '
+            f'{esc(action["human_id"])}</li>'
+            for action in plan["actions"]
+        )
+        content = f"""
+        <div class="notice"><strong>Final review — zero inventory writes</strong>
+          <p>This plan came from the same atomic service used for confirmation.
+          Recheck both permanent spool IDs, sources, and destinations.</p></div>
+        <section class="replacement-timeline" aria-label="Flexible replacement preview">
+          <article><span class="step-number">1</span><div>
+            <p>Outgoing spool</p><h2>{esc(current["permanent_id"])}</h2>
+            <span>{outgoing_label}</span>
+            <small>Currently {esc(assignment["equipment_name"])}
+              Slot {assignment["slot_number"]}</small>
+          </div></article>
+          <span class="timeline-arrow" aria-hidden="true">↓</span>
+          {incoming_summary}
+        </section>
+        <section class="panel review-panel"><h2>Atomic service actions</h2>
+          <ol>{actions}</ol>
+          <p class="field-help">All listed actions succeed together or none are saved.</p>
+        </section>
+        <section class="panel review-panel"><h2>Operation context</h2>
+          <dl class="detail-list">
+            <div><dt>Actor</dt><dd>{esc(v["actor"])}</dd></div>
+            <div><dt>Purpose or reason</dt>
+              <dd>{display(v["reason"], "No reason provided")}</dd></div>
+            <div><dt>Print or job name</dt><dd>{display(v["print_job_name"])}</dd></div>
+            <div><dt>Approximate layer</dt><dd>{display(v["approximate_layer"])}</dd></div>
+            <div><dt>Printer</dt><dd>{display(v["printer"])}</dd></div>
+            <div><dt>Plate</dt><dd>{display(v["plate"])}</dd></div>
+            <div><dt>Operational note</dt><dd>{display(v["operational_note"])}</dd></div>
+          </dl></section>
+        <form class="confirm-form" method="post"
+          action="/inventory/filament/replace/confirm">
+          <input type="hidden" name="review_token" value="{esc(review.token)}">
+          <label class="choice confirm-choice"><input type="checkbox" name="confirm"
+            value="replace" required><span>
+            <strong>Perform this exact flexible spool operation.</strong>
+            <small>Stale state or any failed child action stops with no partial writes.</small>
+          </span></label>
+          <div class="form-actions">
+            <a href="/inventory/filament/replace">Go back without saving</a>
+            <button type="submit">Confirm atomic operation</button></div>
+        </form>"""
+        return self._shell(
+            "Final Review — Spool Replacement", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<a href="/inventory/filament/replace">Replace active spool</a> / '
+            '<span aria-current="page">Final review</span>',
+        )
+
+    def _replacement_complete_flexible(self, result: dict) -> str:
+        plan = result["plan"]
+        current = plan["current_before"]
+        incoming = plan["incoming_before"]
+        outgoing_text = {
+            "empty": "marked Empty",
+            "storage": "returned Open to storage",
+            "ams_slot": "moved Open to another AMS slot",
+        }[result["outgoing_disposition"]]
+        incoming_text = (
+            "No incoming replacement was recorded."
+            if result["incoming_disposition"] == "none"
+            else f'{esc(incoming["permanent_id"])} was loaded from its verified source.'
+        )
+        outgoing_actions = ", ".join(
+            f"#{action_id}" for action_id in result["outgoing_action_ids"]
+        )
+        incoming_actions = (
+            ", ".join(f"#{action_id}" for action_id in result["incoming_action_ids"])
+            or "None"
+        )
+        content = f"""
+        <div class="success-panel"><p class="eyebrow">Atomic workflow completed</p>
+          <h2>Flexible spool operation saved</h2>
+          <p>{esc(current["permanent_id"])} was {outgoing_text}. {incoming_text}</p></div>
+        <div class="detail-grid">
+          <section class="panel"><h2>Recorded result</h2><dl class="detail-list">
+            <div><dt>Outgoing spool</dt><dd>{esc(current["permanent_id"])}</dd></div>
+            <div><dt>Outgoing disposition</dt>
+              <dd>{esc(result["outgoing_disposition"])}</dd></div>
+            <div><dt>Incoming spool</dt>
+              <dd>{esc(incoming["permanent_id"]) if incoming else "None"}</dd></div>
+            <div><dt>Incoming disposition</dt>
+              <dd>{esc(result["incoming_disposition"])}</dd></div>
+            <div><dt>Actor</dt><dd>{esc(result["actor"])}</dd></div>
+            <div><dt>Reason</dt>
+              <dd>{display(result["reason"], "No reason provided")}</dd></div>
+          </dl></section>
+          <section class="panel"><h2>Immutable history</h2><dl class="detail-list">
+            <div><dt>Parent workflow transaction</dt>
+              <dd>#{result["workflow_transaction_id"]}</dd></div>
+            <div><dt>Outgoing action IDs</dt><dd>{outgoing_actions}</dd></div>
+            <div><dt>Incoming action IDs</dt><dd>{incoming_actions}</dd></div>
+          </dl></section>
+        </div>
+        <div class="form-actions">
+          <a href="/inventory/filament/replace">Start another operation</a>
+          <a class="primary-link" href="/inventory/filament">View filament inventory</a>
+        </div>"""
+        return self._shell(
+            "Spool Operation Complete", content,
+            '<a href="/">Dashboard</a> / <a href="/inventory/filament">Filament</a> / '
+            '<span aria-current="page">Operation complete</span>',
         )
 
     def _replacement_error(self, message: str) -> str:

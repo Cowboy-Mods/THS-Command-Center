@@ -36,6 +36,12 @@ class ReplaceActiveFilamentSpoolWorkflow:
     def options(self, filters: dict[str, str] | None = None) -> dict:
         filters = filters or {}
         with closing(connect(self.database)) as db:
+            schema19_ready = bool(
+                db.execute(
+                    """SELECT 1 FROM schema_migrations
+                    WHERE name='019_flexible_spool_replacement.sql'"""
+                ).fetchone()
+            )
             current = [
                 dict(row) for row in db.execute(
                     self._spool_select(include_ams=True) +
@@ -84,9 +90,29 @@ class ReplaceActiveFilamentSpoolWorkflow:
                     ORDER BY e.name,es.slot_number"""
                 )
             ]
+            incoming_spools = [
+                dict(row) for row in db.execute(
+                    self._spool_select_with_optional_ams() +
+                    """ WHERE ii.state IN ('sealed','open','loaded')
+                    AND ii.archived_at IS NULL
+                    ORDER BY CASE ii.state
+                      WHEN 'open' THEN 1 WHEN 'loaded' THEN 2 ELSE 3 END,
+                    m.name,ci.product_line,ci.variant,ii.permanent_id"""
+                )
+            ]
+            storage_locations = [
+                dict(row) for row in db.execute(
+                    """SELECT id,name,kind FROM locations
+                    WHERE kind='storage' AND archived_at IS NULL
+                    ORDER BY name"""
+                )
+            ]
             return {
+                "schema19_ready": schema19_ready,
                 "current_spools": current,
                 "replacement_spools": replacements,
+                "incoming_spools": incoming_spools,
+                "storage_locations": storage_locations,
                 "slots": slots,
                 "filters": {
                     "q": q, "manufacturer": manufacturer,
@@ -96,6 +122,11 @@ class ReplaceActiveFilamentSpoolWorkflow:
             }
 
     def review(self, form: dict[str, str]) -> ReplacementReview:
+        if (
+            str(form.get("outgoing_disposition", "")).strip()
+            or str(form.get("incoming_disposition", "")).strip()
+        ):
+            return self._review_flexible(form)
         if form.get("confirm_empty") != "yes":
             raise ReplaceSpoolError('confirm "This spool is now empty."')
         current_id = self._positive_int(form, "current_instance_id", "select the active spool")
@@ -162,6 +193,8 @@ class ReplaceActiveFilamentSpoolWorkflow:
 
     def commit(self, token: str) -> dict:
         values = self._verify(token)
+        if values["version"] == 2:
+            return self._commit_flexible(values)
         db = connect(self.database)
         try:
             db.execute("BEGIN IMMEDIATE")
@@ -230,6 +263,170 @@ class ReplaceActiveFilamentSpoolWorkflow:
         ).fetchone()
         return dict(row) if row else None
 
+    def _review_flexible(self, form: dict[str, str]) -> ReplacementReview:
+        current_id = self._positive_int(
+            form, "current_instance_id", "select the active spool"
+        )
+        outgoing_disposition = self._choice(
+            form, "outgoing_disposition", {"empty", "storage", "ams_slot"}
+        )
+        incoming_disposition = self._choice(
+            form, "incoming_disposition", {"sealed", "open", "none"}
+        )
+        actor = self._text(form, "actor", 100)
+        reason = self._optional(form, "reason", 500)
+        print_job_name = self._optional(form, "print_job_name", 160)
+        approximate_layer = self._optional_nonnegative_int(
+            form, "approximate_layer", "approximate layer"
+        )
+        printer = self._optional(form, "printer", 120)
+        plate = self._optional(form, "plate", 120)
+        operational_note = self._optional(form, "operational_note", 1000)
+
+        outgoing_location_id = self._optional_positive_int(
+            form, "outgoing_destination_location_id"
+        )
+        outgoing_slot_id = self._optional_positive_int(
+            form, "outgoing_destination_slot_id"
+        )
+        incoming_id = self._optional_positive_int(form, "incoming_instance_id")
+        incoming_source_location_id = self._optional_positive_int(
+            form, "incoming_source_location_id"
+        )
+        incoming_source_slot_id = self._optional_positive_int(
+            form, "incoming_source_slot_id"
+        )
+        incoming_destination_slot_id = self._optional_positive_int(
+            form, "incoming_destination_slot_id"
+        )
+        review_nonce = uuid.uuid4().hex
+
+        db = connect(self.database)
+        try:
+            current = self._active_spool(db, current_id)
+            if not current:
+                raise ReplaceSpoolError(
+                    "current spool must be actively loaded in an AMS"
+                )
+            if incoming_disposition != "none" and incoming_destination_slot_id is None:
+                incoming_destination_slot_id = current["slot_id"]
+            service = InventoryActionService(
+                db,
+                ActionContext(actor=actor, module=self.MODULE, origin="user"),
+            )
+            plan = service.preview_flexible_spool_replacement(
+                current_id,
+                outgoing_disposition=outgoing_disposition,
+                outgoing_destination_location_id=outgoing_location_id,
+                outgoing_destination_slot_id=outgoing_slot_id,
+                incoming_disposition=incoming_disposition,
+                incoming_instance_id=incoming_id,
+                incoming_source_location_id=incoming_source_location_id,
+                incoming_source_slot_id=incoming_source_slot_id,
+                incoming_destination_slot_id=incoming_destination_slot_id,
+                reason=reason,
+                review_nonce=review_nonce,
+                print_job_name=print_job_name,
+                approximate_layer=approximate_layer,
+                printer=printer,
+                plate=plate,
+                operational_note=operational_note,
+            )
+            values = {
+                "version": 2,
+                "reviewed_at": int(time.time()),
+                "review_nonce": review_nonce,
+                "module": self.MODULE,
+                "actor": actor,
+                "reason": reason,
+                "print_job_name": print_job_name,
+                "approximate_layer": approximate_layer,
+                "printer": printer,
+                "plate": plate,
+                "operational_note": operational_note,
+                "current_instance_id": current_id,
+                "outgoing_disposition": outgoing_disposition,
+                "outgoing_destination_location_id": outgoing_location_id,
+                "outgoing_destination_slot_id": outgoing_slot_id,
+                "incoming_disposition": incoming_disposition,
+                "incoming_instance_id": incoming_id,
+                "incoming_source_location_id": incoming_source_location_id,
+                "incoming_source_slot_id": incoming_source_slot_id,
+                "incoming_destination_slot_id": incoming_destination_slot_id,
+                "plan": plan,
+            }
+            return ReplacementReview(self._sign(values), values)
+        except InventoryActionError as exc:
+            raise ReplaceSpoolError(str(exc)) from exc
+        finally:
+            db.close()
+
+    def _commit_flexible(self, values: dict) -> dict:
+        db = connect(self.database)
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute(
+                "SELECT 1 FROM inventory_workflow_transactions WHERE review_nonce=?",
+                (values["review_nonce"],),
+            ).fetchone():
+                raise ReplaceSpoolError(
+                    "this preview was already used; start a new replacement"
+                )
+            service = InventoryActionService(
+                db,
+                ActionContext(
+                    actor=values["actor"], module=self.MODULE, origin="user"
+                ),
+            )
+            arguments = self._flexible_arguments(values)
+            current_plan = service.preview_flexible_spool_replacement(**arguments)
+            if current_plan != values["plan"]:
+                raise ReplaceSpoolError(
+                    "spool or destination state changed after preview; review again"
+                )
+            result = service.flexibly_replace_active_filament_spool(**arguments)
+            db.commit()
+            return {**values, **result}
+        except ReplaceSpoolError:
+            db.rollback()
+            raise
+        except (InventoryActionError, sqlite3.IntegrityError) as exc:
+            db.rollback()
+            message = (
+                "this preview was already used; start a new replacement"
+                if "review_nonce" in str(exc) or "UNIQUE constraint failed" in str(exc)
+                else str(exc)
+            )
+            raise ReplaceSpoolError(message) from exc
+        except Exception:
+            db.rollback()
+            raise
+        finally:
+            db.close()
+
+    @staticmethod
+    def _flexible_arguments(values: dict) -> dict:
+        return {
+            "current_instance_id": values["current_instance_id"],
+            "outgoing_disposition": values["outgoing_disposition"],
+            "outgoing_destination_location_id": (
+                values["outgoing_destination_location_id"]
+            ),
+            "outgoing_destination_slot_id": values["outgoing_destination_slot_id"],
+            "incoming_disposition": values["incoming_disposition"],
+            "incoming_instance_id": values["incoming_instance_id"],
+            "incoming_source_location_id": values["incoming_source_location_id"],
+            "incoming_source_slot_id": values["incoming_source_slot_id"],
+            "incoming_destination_slot_id": values["incoming_destination_slot_id"],
+            "reason": values["reason"],
+            "review_nonce": values["review_nonce"],
+            "print_job_name": values["print_job_name"],
+            "approximate_layer": values["approximate_layer"],
+            "printer": values["printer"],
+            "plate": values["plate"],
+            "operational_note": values["operational_note"],
+        }
+
     @staticmethod
     def _spool_select(include_ams: bool = False) -> str:
         fields = (
@@ -253,6 +450,24 @@ class ReplaceActiveFilamentSpoolWorkflow:
               AND mat.attribute_definition_id=(
                 SELECT id FROM attribute_definitions WHERE name='material')
             {ams_joins}"""
+
+    @staticmethod
+    def _spool_select_with_optional_ams() -> str:
+        return """
+            SELECT ii.id,ii.permanent_id,ii.state,ii.remaining_quantity,
+            ii.location_id,m.name manufacturer,ci.product_line,ci.variant color,
+            mat.text_value material,e.name equipment_name,es.slot_number,
+            es.id slot_id
+            FROM inventory_instances ii
+            JOIN catalog_items ci ON ci.id=ii.catalog_item_id
+            JOIN manufacturers m ON m.id=ci.manufacturer_id
+            LEFT JOIN catalog_item_attribute_values mat ON mat.catalog_item_id=ci.id
+              AND mat.attribute_definition_id=(
+                SELECT id FROM attribute_definitions WHERE name='material')
+            LEFT JOIN ams_assignments aa
+              ON aa.instance_id=ii.id AND aa.unloaded_at IS NULL
+            LEFT JOIN equipment_slots es ON es.id=aa.slot_id
+            LEFT JOIN equipment e ON e.id=es.equipment_id"""
 
     @staticmethod
     def _values(db, column: str) -> list[str]:
@@ -290,7 +505,7 @@ class ReplaceActiveFilamentSpoolWorkflow:
             values = json.loads(body)
         except (ValueError, TypeError, json.JSONDecodeError) as exc:
             raise ReplaceSpoolError("replacement preview is invalid; start again") from exc
-        if values.get("version") != 1 or values.get("module") != self.MODULE:
+        if values.get("version") not in {1, 2} or values.get("module") != self.MODULE:
             raise ReplaceSpoolError("replacement preview is invalid; start again")
         if time.time() - values.get("reviewed_at", 0) > self.MAX_REVIEW_AGE_SECONDS:
             raise ReplaceSpoolError("replacement preview expired; start again")
@@ -319,6 +534,26 @@ class ReplaceActiveFilamentSpoolWorkflow:
             return value
         except (TypeError, ValueError) as exc:
             raise ReplaceSpoolError(message) from exc
+
+    @staticmethod
+    def _optional_positive_int(form: dict[str, str], key: str) -> int | None:
+        raw = str(form.get(key, "")).strip()
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+            if value <= 0:
+                raise ValueError
+            return value
+        except (TypeError, ValueError) as exc:
+            raise ReplaceSpoolError(f"{key.replace('_', ' ')} is invalid") from exc
+
+    @staticmethod
+    def _choice(form: dict[str, str], key: str, allowed: set[str]) -> str:
+        value = str(form.get(key, "")).strip()
+        if value not in allowed:
+            raise ReplaceSpoolError(f"select a valid {key.replace('_', ' ')}")
+        return value
 
     @staticmethod
     def _optional_nonnegative_int(
