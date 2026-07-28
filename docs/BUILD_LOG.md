@@ -1,5 +1,20 @@
 # THS Command Center Build Log
 
+## 2026-07-28 — Flexible spool replacement schema foundation
+
+- Added schema-only Migration 019 for explicit outgoing and incoming spool
+  dispositions without fake replacement identities.
+- Preserved legacy sealed-replacement columns and existing immutable workflow
+  history while making the legacy replacement and destination fields nullable.
+- Added constrained storage, AMS-slot, sealed, open, and no-replacement shapes.
+- Verified the migration against a disposable production copy: schema 18 to 19,
+  75 protected table fingerprints unchanged, integrity OK, and zero foreign-key
+  violations.
+- Added eight migration/schema tests; focused filament suites pass 133 tests and
+  the complete regression suite passes 295 tests.
+- Kept production at schema 18 and made no spool, equipment, telemetry, UI, or
+  service-layer changes.
+
 ## 2026-07-27 — First Equipment Registry onboarding
 
 - Registered Cowboy's Bambu Lab P1S as `THS-EQP-000001` through the signed,
