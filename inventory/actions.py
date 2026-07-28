@@ -767,6 +767,266 @@ class InventoryActionService:
 
         return self._atomic(work)
 
+    def flexibly_replace_active_filament_spool(
+        self, current_instance_id: int, *, outgoing_disposition: str,
+        outgoing_destination_location_id: int | None = None,
+        outgoing_destination_slot_id: int | None = None,
+        incoming_disposition: str, incoming_instance_id: int | None = None,
+        incoming_source_location_id: int | None = None,
+        incoming_source_slot_id: int | None = None,
+        incoming_destination_slot_id: int | None = None,
+        reason: str | None, review_nonce: str,
+        print_job_name: str | None = None, approximate_layer: int | None = None,
+        printer: str | None = None, plate: str | None = None,
+        operational_note: str | None = None,
+    ) -> dict:
+        """Perform one explicit schema-19 active-spool replacement atomically."""
+        if not review_nonce.strip():
+            raise InventoryActionError("review nonce is required")
+        if outgoing_disposition not in {"empty", "storage", "ams_slot"}:
+            raise InventoryActionError("invalid outgoing disposition")
+        if incoming_disposition not in {"sealed", "open", "none"}:
+            raise InventoryActionError("invalid incoming disposition")
+
+        current = self._instance(current_instance_id)
+        current_assignment = self._active_ams_assignment(current_instance_id)
+        if (
+            current["state"] != "loaded"
+            or current["archived_at"]
+            or not current_assignment
+        ):
+            raise InventoryActionError("current spool must be actively loaded in an AMS")
+
+        outgoing_location = None
+        outgoing_slot = None
+        if outgoing_disposition == "empty":
+            if (
+                outgoing_destination_location_id is not None
+                or outgoing_destination_slot_id is not None
+            ):
+                raise InventoryActionError("empty outgoing spool cannot have a destination")
+        elif outgoing_disposition == "storage":
+            if (
+                outgoing_destination_location_id is None
+                or outgoing_destination_slot_id is not None
+            ):
+                raise InventoryActionError(
+                    "storage disposition requires one storage location"
+                )
+            outgoing_location = self._open_spool_storage(
+                outgoing_destination_location_id
+            )
+        else:
+            if (
+                outgoing_destination_slot_id is None
+                or outgoing_destination_location_id is not None
+            ):
+                raise InventoryActionError(
+                    "AMS disposition requires one destination AMS slot"
+                )
+            outgoing_slot = self._active_ams_slot(outgoing_destination_slot_id)
+            if outgoing_slot["id"] == current_assignment["slot_id"]:
+                raise InventoryActionError("outgoing spool is already in that AMS slot")
+
+        incoming = None
+        incoming_source_assignment = None
+        incoming_source_location = None
+        incoming_destination = None
+        if incoming_disposition == "none":
+            if any(
+                value is not None for value in (
+                    incoming_instance_id,
+                    incoming_source_location_id,
+                    incoming_source_slot_id,
+                    incoming_destination_slot_id,
+                )
+            ):
+                raise InventoryActionError(
+                    "no replacement requires null incoming spool, source, and destination"
+                )
+        else:
+            if incoming_instance_id is None or incoming_destination_slot_id is None:
+                raise InventoryActionError(
+                    "incoming spool and destination AMS slot are required"
+                )
+            if incoming_instance_id == current_instance_id:
+                raise InventoryActionError(
+                    "current and incoming spools must be different"
+                )
+            if (incoming_source_location_id is None) == (
+                incoming_source_slot_id is None
+            ):
+                raise InventoryActionError(
+                    "incoming spool requires exactly one source location or AMS slot"
+                )
+            incoming = self._instance(incoming_instance_id)
+            if incoming["archived_at"]:
+                raise InventoryActionError("incoming spool must be active")
+            incoming_destination = self._active_ams_slot(
+                incoming_destination_slot_id
+            )
+
+            if incoming_source_location_id is not None:
+                incoming_source_location = self._require_active_location(
+                    incoming_source_location_id, "incoming source location"
+                )
+                if incoming["location_id"] != incoming_source_location["id"]:
+                    raise InventoryActionError(
+                        "incoming spool is not at the stated source location"
+                    )
+                if self._active_ams_assignment(incoming_instance_id):
+                    raise InventoryActionError(
+                        "incoming spool already occupies an AMS slot"
+                    )
+                required_state = "sealed" if incoming_disposition == "sealed" else "open"
+                if incoming["state"] != required_state:
+                    raise InventoryActionError(
+                        f"incoming spool must be {required_state}"
+                    )
+            else:
+                if incoming_disposition != "open":
+                    raise InventoryActionError(
+                        "sealed incoming spool cannot have an AMS source slot"
+                    )
+                incoming_source_assignment = self._active_ams_assignment(
+                    incoming_instance_id
+                )
+                if (
+                    incoming["state"] != "loaded"
+                    or not incoming_source_assignment
+                    or incoming_source_assignment["slot_id"] != incoming_source_slot_id
+                ):
+                    raise InventoryActionError(
+                        "incoming open spool is not loaded in the stated AMS source slot"
+                    )
+                if incoming_source_slot_id == incoming_destination_slot_id:
+                    raise InventoryActionError(
+                        "incoming source and destination AMS slots must differ"
+                    )
+
+        final_slots = [
+            slot_id for slot_id in (
+                outgoing_destination_slot_id
+                if outgoing_disposition == "ams_slot" else None,
+                incoming_destination_slot_id
+                if incoming_disposition != "none" else None,
+            )
+            if slot_id is not None
+        ]
+        if len(final_slots) != len(set(final_slots)):
+            raise InventoryActionError(
+                "outgoing and incoming spools cannot share a destination AMS slot"
+            )
+
+        vacated_instances = {current_instance_id}
+        if incoming_source_assignment:
+            vacated_instances.add(incoming_instance_id)
+        for slot_id in final_slots:
+            occupant = self.db.execute(
+                """SELECT instance_id FROM ams_assignments
+                WHERE slot_id=? AND unloaded_at IS NULL""",
+                (slot_id,),
+            ).fetchone()
+            if occupant and occupant["instance_id"] not in vacated_instances:
+                raise InventoryActionError(
+                    "destination AMS slot is occupied by another spool"
+                )
+
+        def work():
+            workflow_id = self.db.execute(
+                """INSERT INTO inventory_workflow_transactions(
+                workflow_uuid,review_nonce,workflow_type,actor,module,origin,reason,
+                current_instance_id,replacement_instance_id,destination_slot_id,
+                print_job_name,approximate_layer,printer,plate,operational_note,
+                outgoing_disposition,outgoing_destination_location_id,
+                outgoing_destination_slot_id,incoming_disposition,
+                incoming_source_location_id,incoming_source_slot_id,
+                incoming_instance_id,incoming_destination_slot_id)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    str(uuid.uuid4()), review_nonce, "replace_active_filament_spool",
+                    self.context.actor, self.context.module, self.context.origin, reason,
+                    current_instance_id, None, None, print_job_name, approximate_layer,
+                    printer, plate, operational_note, outgoing_disposition,
+                    outgoing_destination_location_id, outgoing_destination_slot_id,
+                    incoming_disposition, incoming_source_location_id,
+                    incoming_source_slot_id, incoming_instance_id,
+                    incoming_destination_slot_id,
+                ),
+            ).lastrowid
+            outgoing_actions = []
+            incoming_actions = []
+
+            if outgoing_disposition == "empty":
+                outgoing_actions.append(
+                    self.mark_loaded_spool_empty(
+                        current_instance_id, reason=reason,
+                        workflow_transaction_id=workflow_id,
+                    )
+                )
+            else:
+                temporary_location_id = (
+                    outgoing_location["id"]
+                    if outgoing_disposition == "storage"
+                    else outgoing_slot["location_id"]
+                )
+                outgoing_actions.append(
+                    self.unload_instance_from_ams(
+                        current_instance_id, temporary_location_id, reason=reason,
+                        workflow_transaction_id=workflow_id,
+                    )
+                )
+
+            if incoming_source_assignment:
+                incoming_actions.append(
+                    self.unload_instance_from_ams(
+                        incoming_instance_id,
+                        incoming_destination["location_id"],
+                        reason=reason,
+                        workflow_transaction_id=workflow_id,
+                    )
+                )
+
+            if outgoing_disposition == "ams_slot":
+                outgoing_actions.append(
+                    self.load_instance_into_ams(
+                        current_instance_id, outgoing_destination_slot_id,
+                        reason=reason, workflow_transaction_id=workflow_id,
+                    )
+                )
+
+            if incoming_disposition == "sealed":
+                incoming_actions.append(
+                    self.open_sealed_spool(
+                        incoming_instance_id, reason=reason,
+                        workflow_transaction_id=workflow_id,
+                    )
+                )
+            if incoming_disposition != "none":
+                incoming_actions.append(
+                    self.load_instance_into_ams(
+                        incoming_instance_id, incoming_destination_slot_id,
+                        reason=reason, workflow_transaction_id=workflow_id,
+                    )
+                )
+
+            return {
+                "workflow_transaction_id": workflow_id,
+                "source_slot_id": current_assignment["slot_id"],
+                "outgoing_disposition": outgoing_disposition,
+                "outgoing_action_ids": outgoing_actions,
+                "outgoing_destination_location_id": outgoing_destination_location_id,
+                "outgoing_destination_slot_id": outgoing_destination_slot_id,
+                "incoming_disposition": incoming_disposition,
+                "incoming_instance_id": incoming_instance_id,
+                "incoming_action_ids": incoming_actions,
+                "incoming_source_location_id": incoming_source_location_id,
+                "incoming_source_slot_id": incoming_source_slot_id,
+                "incoming_destination_slot_id": incoming_destination_slot_id,
+            }
+
+        return self._atomic(work)
+
     def initialize_verified_ams_state(
         self, instance_id: int, slot_id: int, *, reason: str | None,
         effective_at: str, request_nonce: str,
@@ -915,6 +1175,7 @@ class InventoryActionService:
         self, instance_id: int, destination_location_id: int, *,
         reason: str | None = None, reverses_action_id: int | None = None,
         request_nonce: str | None = None,
+        workflow_transaction_id: int | None = None,
     ) -> int:
         previous = self._instance(instance_id)
         assignment = self.db.execute(
@@ -948,6 +1209,7 @@ class InventoryActionService:
                 reverse_action="load_instance_into_ams", reason=reason,
                 transaction_id=tx, reverses_action_id=reverses_action_id,
                 request_nonce=request_nonce,
+                workflow_transaction_id=workflow_transaction_id,
             )
 
         return self._atomic(work)
@@ -1150,6 +1412,44 @@ class InventoryActionService:
         row = self._row("inventory_instances", instance_id)
         if not row:
             raise InventoryActionError("inventory instance not found")
+        return row
+
+    def _active_ams_assignment(self, instance_id: int):
+        return self.db.execute(
+            """SELECT aa.id,aa.slot_id,es.location_id,e.name equipment_name,
+            es.slot_number FROM ams_assignments aa
+            JOIN equipment_slots es ON es.id=aa.slot_id
+            JOIN equipment e ON e.id=es.equipment_id
+            WHERE aa.instance_id=? AND aa.unloaded_at IS NULL""",
+            (instance_id,),
+        ).fetchone()
+
+    def _active_ams_slot(self, slot_id: int):
+        row = self.db.execute(
+            """SELECT es.id,es.location_id,e.name equipment_name,es.slot_number
+            FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+            WHERE es.id=? AND e.equipment_type='AMS' AND e.archived_at IS NULL""",
+            (slot_id,),
+        ).fetchone()
+        if not row:
+            raise InventoryActionError("AMS slot not found")
+        return row
+
+    def _require_active_location(self, location_id: int, label: str):
+        row = self.db.execute(
+            "SELECT id,name,kind FROM locations WHERE id=? AND archived_at IS NULL",
+            (location_id,),
+        ).fetchone()
+        if not row:
+            raise InventoryActionError(f"{label} not found")
+        return row
+
+    def _open_spool_storage(self, location_id: int):
+        row = self._require_active_location(location_id, "storage location")
+        if row["kind"] != "storage":
+            raise InventoryActionError(
+                "outgoing storage destination must be an active storage location"
+            )
         return row
 
     def _require(self, table: str, row_id: int, label: str) -> None:

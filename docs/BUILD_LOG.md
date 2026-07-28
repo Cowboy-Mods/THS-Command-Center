@@ -1,5 +1,22 @@
 # THS Command Center Build Log
 
+## 2026-07-28 — Flexible spool replacement service layer
+
+- Added the schema-19 `flexibly_replace_active_filament_spool` service contract
+  for empty, storage-return, AMS-move, sealed/open incoming, and no-replacement
+  operations.
+- Validates the complete final AMS layout before writing and permits occupied
+  destinations only when the same atomic transaction vacates them.
+- Links outgoing and incoming child actions to one immutable explicit-disposition
+  parent workflow and rolls back every state, assignment, transaction, and audit
+  record on failure.
+- Preserved the original sealed-only service method and legacy schema-6 column
+  behavior without backfilling or reinterpreting history.
+- Added 11 focused service tests; wider filament/service coverage passes 144
+  tests and the full regression suite passes 306 tests.
+- Made no UI, production database, spool-correction, migration, or main-branch
+  changes.
+
 ## 2026-07-28 — Flexible spool replacement schema foundation
 
 - Added schema-only Migration 019 for explicit outgoing and incoming spool
