@@ -396,3 +396,21 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
 - No production data or schema changed. Deployment remains blocked pending
   explicit approval.
+# 2026-07-29 — Filament swatch production deployment
+
+- Reverified and stopped only the separately authorized untracked PID 15960;
+  the verified production PID 37188 remained undisturbed during listener
+  cleanup.
+- Reran every deployment gate against source commit
+  `8ea3c5c58a7d366a32215065303f1d9e053e2b76`.
+- Restarted only the verified dashboard server as PID 58064 using the explicit
+  production database and deliberately skipped the migration command.
+- Live dashboard validation confirmed Purple `#800080`, Hot Pink `#ef8cab`,
+  Cocoa Brown `#79533a`, and the intentional Black/Purple two-color gradient.
+- Dashboard and guided replacement routes returned HTTP 200 with zero database
+  writes.
+- Focused dashboard tests passed: 35. Full regression suite passed: 328.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- Main and all protected production records remained untouched.
