@@ -455,3 +455,22 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+# 2026-07-29 — AMS Slot 2 maintenance clarification
+
+- Kept Slot 2/A2 as an existing slot under `THS-EQP-000002`; no independent
+  equipment or new slot model is proposed.
+- Scoped proposed `THS-MNT-000002` to affected component Slot 2/A2, including
+  the Do-not-load restriction, symptoms, and repair/function-test requirement.
+- Kept AMS 1 operational with restrictions using Degraded equipment status and
+  Monitor-during-printing readiness; Slots 1, 3, and 4 remain available.
+- Kept Slot 4/A4 in service and placed its historical rewind behavior only in
+  the maintenance monitoring note.
+- Revised the proposed write set to 21 inserts, two updates, zero deletes, zero
+  slot changes, and zero assignment changes.
+- Focused equipment/inventory/maintenance suites passed: 133. Full regression
+  passed: 337.
+- No migration is proposed. Production remains blocked only on a narrow atomic
+  onboarding service checkpoint and explicit authorization.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.

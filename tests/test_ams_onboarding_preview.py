@@ -67,8 +67,8 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
             [unit["registry_record"]["equipment_number"] for unit in result["units"]],
             ["THS-EQP-000002", "THS-EQP-000003"],
         )
-        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 18)
-        self.assertEqual(len(result["expected_row_changes"]["updates"]), 1)
+        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 21)
+        self.assertEqual(len(result["expected_row_changes"]["updates"]), 2)
         self.assertEqual(
             result["parent_serial_correction"]["manufacturer_serial_number_after"],
             self.P1S_SERIAL,
@@ -208,21 +208,53 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
         for unit in result["units"]:
             self.assertEqual(unit["registry_record"]["lifecycle_state"], "installed")
             self.assertIsNone(unit["registry_record"]["current_location_id"])
-            self.assertFalse(unit["maintenance_link_proposed"])
             self.assertEqual(unit["existing_maintenance_asset"]["readiness_state"], "normal")
+        self.assertTrue(result["units"][0]["maintenance_link_proposed"])
+        self.assertFalse(result["units"][1]["maintenance_link_proposed"])
+        issue = result["maintenance_representation"]
         self.assertEqual(
-            result["required_future_schema_design"]["ams_1_readiness"], "needs_service"
+            issue["maintenance_record"]["event_type"], "fault_discovered"
         )
+        self.assertEqual(issue["maintenance_record"]["status"], "in_progress")
+        self.assertIn("Affected component: Slot 2 / A2", issue["maintenance_record"]["symptoms"])
+        self.assertIn(
+            "Restriction: Slot 2 / A2 is Out of service",
+            issue["maintenance_record"]["notes"],
+        )
+        self.assertIn("Slot 4 / A4 remains in service", issue["maintenance_record"]["notes"])
         self.assertEqual(
-            result["required_future_schema_design"]["ams_2_readiness"], "unknown"
+            issue["maintenance_asset_update"]["readiness_state_after"],
+            "monitor_during_printing",
         )
-        self.assertTrue(
-            result["required_future_schema_design"]["slot_2"]["must_block_assignment"]
-        )
-        self.assertGreaterEqual(len(result["architecture_blockers"]), 4)
+        self.assertTrue(issue["slot_2_assignment_precondition"]["must_be_empty"])
+        self.assertFalse(issue["slot_2_assignment_precondition"]["create_assignment"])
+        self.assertEqual(len(result["architecture_blockers"]), 2)
         self.assertIn("No purchase or receiving link", result["design_notes"]["provenance"])
 
-    def test_08_conflicting_parent_serial_is_rejected_without_writes(self):
+    def test_08_slot_2_issue_does_not_create_slot_equipment_or_disable_whole_ams(self):
+        result = self.build()
+        unit = result["units"][0]
+        self.assertEqual(unit["registry_record"]["equipment_number"], "THS-EQP-000002")
+        self.assertEqual(unit["registry_record"]["operational_status"], "degraded")
+        self.assertEqual(
+            unit["maintenance_issue"]["maintenance_asset_update"]["readiness_state_after"],
+            "monitor_during_printing",
+        )
+        self.assertNotEqual(
+            unit["maintenance_issue"]["maintenance_asset_update"]["readiness_state_after"],
+            "out_of_service",
+        )
+        self.assertEqual(result["expected_row_changes"]["slot_rows_created"], 0)
+        self.assertEqual(
+            sum(
+                1
+                for row in result["expected_row_changes"]["inserts"]
+                if row["table"] == "equipment_registry"
+            ),
+            2,
+        )
+
+    def test_09_conflicting_parent_serial_is_rejected_without_writes(self):
         db = connect(self.database)
         db.execute(
             """

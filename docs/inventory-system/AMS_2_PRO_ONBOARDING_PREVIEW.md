@@ -13,12 +13,13 @@ The Equipment Registry and legacy AMS state were reinspected read-only using
 Cowboy's confirmed serials, P1S relationship, Bambu Studio A/B designations,
 slot layout, and maintenance facts.
 
-The identity, bridge, relationship, lifecycle, and operational portions can be
-previewed under schema 19. The complete onboarding is **not production-ready**
-because schema 19 cannot truthfully store or enforce:
+The complete write set now uses the existing maintenance architecture. AMS 1
+Slot 2 remains a slot, not independent equipment. Its restriction is scoped
+inside an AMS 1 maintenance fault record. AMS 1 remains operational with
+restrictions; the whole unit is not marked unavailable.
 
-1. AMS 1 Slot 2 as `Out of service / Do not load`; or
-2. maintenance readiness `Needs service` for AMS 1 and `Unknown` for AMS 2.
+The preview is not production-ready until a narrow atomic onboarding service
+can commit every proposed row and rollback every child action together.
 
 No migration, service change, equipment record, relationship, restriction,
 maintenance record, slot change, assignment change, or production write was
@@ -157,7 +158,7 @@ Confirmed equipment-level readiness:
 - AMS 1: Needs service;
 - AMS 2: Unknown until formally inspected.
 
-## Current schema conflict
+## Existing maintenance representation
 
 Production already contains legacy maintenance assets:
 
@@ -166,58 +167,55 @@ Production already contains legacy maintenance assets:
 | AMS 1 | 2 | Normal |
 | AMS 2 | 3 | Normal |
 
-Linking these assets now would falsely project Normal for both new Registry
-records. Existing readiness values are limited to:
+Only AMS 1 is linked to its existing maintenance asset. Its readiness changes
+from Normal to `monitor_during_printing`, which keeps the unit and Slots 1, 3,
+and 4 available while communicating an active restriction.
 
-- Normal;
-- Monitor during printing;
-- No unattended printing;
-- Out of service.
+AMS 2 is not linked to maintenance asset 3 during onboarding. Its Registry
+readiness therefore remains null / Unknown until a formal inspection.
 
-There is no `Needs service` or `Unknown` value. The readiness is asset-wide,
-so setting AMS 1 to Out of service would incorrectly disable usable Slots 1,
-3, and 4.
+### Proposed AMS 1 maintenance link
 
-Schema 19 also has no slot-level operational-state, restriction, monitoring,
-or immutable restriction-history structure. Notes alone would not enforce
-`Do not load`, so storing only prose would be unsafe.
+| Field | Value |
+|---|---|
+| Registry equipment | `THS-EQP-000002` |
+| Existing maintenance asset | ID 2, AMS 1 |
+| Linked by | Cowboy |
+| Linked at | Actual onboarding commit time |
 
-The complete write set therefore cannot yet include a truthful Slot 2
-restriction or maintenance-readiness record. No row count is invented for
-tables that do not exist.
+### Proposed maintenance fault
 
-## Required future schema/service design
+| Field | Proposed value |
+|---|---|
+| Event number | `THS-MNT-000002` |
+| Asset | AMS 1, maintenance asset 2 |
+| Event type | `fault_discovered` |
+| Status | `in_progress` |
+| Severity | High |
+| Discovered at | Actual future onboarding time; no earlier date invented |
+| Affected component / symptoms | `Affected component: Slot 2 / A2. Reported symptom: the feeder/roller becomes loud and may lock.` |
+| Likely cause | null; inspection has not proven a cause |
+| Corrective action | `Required resolution: inspect, repair, and function-test Slot 2 / A2 before returning it to service.` |
+| Restriction note | `Slot 2 / A2 is Out of service — do not load filament.` |
+| Slot 4 note | Slot 4/A4 remains in service; historically rewound faster than the spool; currently loaded with Cocoa Brown and functioning |
+| Whole-unit readiness | Normal to `monitor_during_printing` |
+| Whole-unit unavailable | No |
 
-A separately authorized source/schema checkpoint must provide:
+One immutable `maintenance_history.record_fault` row records status null to
+In progress and readiness Normal to Monitor during printing.
 
-### Slot 2 current state and history
+The current schema has no dedicated `affected_component` or `restriction`
+columns. The maintenance record therefore identifies those labels explicitly
+inside `symptoms`, `corrective_action`, and `notes`, as authorized. No new
+slot-equipment model or migration is proposed.
 
-- slot ID 2 / A2;
-- operational state `out_of_service`;
-- restriction `do_not_load`;
-- required reason and actor;
-- state version and effective time;
-- immutable history;
-- service-layer validation that rejects every load or replacement targeting
-  the restricted slot;
-- atomic stale-state, duplicate, tamper, and replay protection.
+This text is an authoritative maintenance issue but is not automatically
+interpreted by the current filament-loading service. Until a separately
+authorized enforcement change exists, the operational control is the signed
+onboarding precondition that A2 remains empty and the recorded `Do not load`
+restriction.
 
-### Slot 4 monitoring state and history
-
-- slot ID 4 / A4;
-- operational state remains operational;
-- monitoring note for the rewind behavior;
-- no load restriction;
-- immutable history and audit.
-
-### Equipment maintenance readiness
-
-- AMS 1 `needs_service`;
-- AMS 2 `unknown`;
-- no conversion to misleading legacy readiness values;
-- separate projection from operational status and derived restrictions.
-
-### Atomic onboarding orchestrator
+## Required atomic onboarding service
 
 One signed commit must bind:
 
@@ -225,24 +223,25 @@ One signed commit must bind:
 - both AMS registrations;
 - both parent relationships;
 - both legacy bridges;
-- equipment-level readiness;
-- Slot 2 restriction;
-- Slot 4 monitoring note;
-- maintenance record and all audit/history rows.
+- the AMS 1 maintenance-asset link;
+- AMS 1 readiness update;
+- the Slot 2-scoped maintenance record;
+- the Slot 4 monitoring note inside that record;
+- maintenance history and all equipment audit/history rows.
 
 Direct production SQL is not approved.
 
-## Revised currently representable write set
+## Revised proposed write set
 
-Under the existing schema, the non-maintenance portion contains:
+Under the existing schema, the complete proposal contains:
 
-- **18 inserted rows**;
-- **1 updated row**;
+- **21 inserted rows**;
+- **2 updated rows**;
 - **0 deleted rows**;
 - **0 slot rows created or changed**;
 - **0 assignment rows changed**.
 
-The 18 currently representable inserts are:
+The 21 proposed inserts are:
 
 | Table | Count | Purpose |
 |---|---:|---|
@@ -252,21 +251,20 @@ The 18 currently representable inserts are:
 | `equipment_relationship_history` | 2 | Immutable attach events |
 | `equipment_legacy_container_links` | 2 | Registry-to-legacy bridges |
 | `audit_events` | 7 | P1S update plus three events per AMS |
-| **Total** | **18** | |
+| `equipment_maintenance_asset_links` | 1 | Link `THS-EQP-000002` to existing AMS 1 maintenance asset |
+| `maintenance_records` | 1 | Slot 2/A2-scoped fault and Slot 4 monitoring note |
+| `maintenance_history` | 1 | Immutable `record_fault` event |
+| **Total** | **21** | |
 
-The one currently representable update is:
+The two proposed updates are:
 
 - `equipment_registry` row 1 / `THS-EQP-000001`:
   `manufacturer_serial_number` null to `01P00C511401400`,
   `state_version` 1 to 2, and `updated_at` to commit time.
-
-The complete required inserted-row count is intentionally **not finalized**
-until the slot-restriction and readiness schema is approved. Claiming a final
-count now would omit required safety records or invent nonexistent tables.
+- `maintenance_assets` row 2 / AMS 1: readiness Normal to
+  `monitor_during_printing` and `updated_at` to commit time.
 
 ## Expected audit records
-
-Current-schema portion:
 
 1. `THS-EQP-000001` — `update_equipment_facts`;
 2. `THS-EQP-000002` — `register_equipment`;
@@ -276,8 +274,10 @@ Current-schema portion:
 6. `THS-EQP-000003` — `attach_equipment_relationship`;
 7. `THS-EQP-000003` — `link_legacy_equipment_container`.
 
-The later schema checkpoint must add explicit restriction, monitoring,
-maintenance-readiness, and maintenance-record audit events.
+Additional immutable maintenance audit:
+
+8. `THS-MNT-000002` — `maintenance_history.record_fault`, previous readiness
+   Normal, new readiness Monitor during printing.
 
 ## Duplicate and stale-state protections
 
@@ -293,7 +293,7 @@ A future commit must reject:
 - duplicate Registry-to-legacy-container bridges;
 - anything other than unique slot numbers 1–4 per legacy AMS;
 - any duplicate active spool in a slot or duplicate active slot for a spool;
-- any load into restricted Slot 2/A2;
+- any onboarding state in which Slot 2/A2 is not empty;
 - stale P1S, AMS, maintenance, slot, assignment, or sequence snapshots;
 - expired, tampered, replayed, or reused previews.
 
@@ -334,7 +334,8 @@ After a later authorized commit:
   serials;
 - both AMS units must be current `attached_to` children of the P1S;
 - both immutable attach histories and both legacy bridges must exist;
-- AMS 1 must project Degraded / Needs service;
+- AMS 1 must project Degraded with an in-progress Slot 2 maintenance fault and
+  Monitor during printing readiness;
 - AMS 2 must project Operating / Unknown readiness;
 - Slot 2/A2 must be empty, Out of service, and reject loading;
 - Slot 4/A4 must remain loaded and operational with its monitoring note;
@@ -347,6 +348,7 @@ After a later authorized commit:
 
 ## Boundary
 
-All physical facts are recorded in the revised preview. Production onboarding
-is blocked on a separately approved slot-restriction/readiness schema and
-atomic service checkpoint. Stop for explicit authorization.
+All physical facts are recorded in the revised preview. No new schema or
+slot-equipment model is required by this plan. Production onboarding remains
+blocked on a separately approved atomic service checkpoint. Stop for explicit
+authorization.

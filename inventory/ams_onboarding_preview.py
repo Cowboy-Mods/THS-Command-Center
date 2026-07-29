@@ -61,6 +61,7 @@ class AMSOnboardingPreview:
             next_numbers = self._next_numbers(db, 2)
             counts = self._counts(db)
             maintenance_assets = self._maintenance_assets(db)
+            maintenance_number = self._next_maintenance_number(db)
             units = []
             for index, legacy in enumerate(legacy_units):
                 units.append(
@@ -75,6 +76,7 @@ class AMSOnboardingPreview:
                         equipment_type=equipment_type,
                         subtype=subtype,
                         maintenance_asset=maintenance_assets[legacy["id"]],
+                        maintenance_number=maintenance_number,
                     )
                 )
             protected = self._protected_fingerprints(db)
@@ -118,54 +120,21 @@ class AMSOnboardingPreview:
             "production_ready": False,
             "architecture_blockers": [
                 (
-                    "Schema 19 has no slot-level operational/restriction state, so "
-                    "AMS 1 Slot 2 cannot be marked Out of service / Do not load or "
-                    "enforced against future loading."
-                ),
-                (
-                    "Maintenance readiness has no Needs service or Unknown value. "
-                    "Linking the existing legacy maintenance assets would project "
-                    "Normal for both AMS units, which conflicts with confirmed truth."
-                ),
-                (
-                    "The asset-wide out_of_service state would incorrectly disable "
-                    "usable AMS 1 Slots 1, 3, and 4."
+                    "The existing maintenance record can scope the restriction to "
+                    "Slot 2 / A2 in symptoms, corrective action, and notes, but the "
+                    "inventory loading service does not enforce maintenance-note text."
                 ),
                 (
                     "The current service has no single atomic workflow for P1S fact "
                     "correction, two registrations, relationships, legacy bridges, "
-                    "slot restriction, and maintenance audit."
+                    "the AMS 1 maintenance link, record, readiness update, and history."
                 ),
             ],
-            "required_future_schema_design": {
-                "slot_2": {
-                    "slot_id": 2,
-                    "operational_state": "out_of_service",
-                    "restriction": "do_not_load",
-                    "reason": (
-                        "Slot becomes loud and can lock up; feeder/roller mechanism "
-                        "requires inspection and repair."
-                    ),
-                    "must_block_assignment": True,
-                    "immutable_history_required": True,
-                },
-                "slot_4": {
-                    "slot_id": 4,
-                    "operational_state": "operational",
-                    "monitoring_note": (
-                        "Historically rewound faster than the spool; currently loaded "
-                        "and functioning. Monitor, but do not mark out of service."
-                    ),
-                    "must_block_assignment": False,
-                    "immutable_history_required": True,
-                },
-                "ams_1_readiness": "needs_service",
-                "ams_2_readiness": "unknown",
-            },
+            "maintenance_representation": units[0]["maintenance_issue"],
             "confirmation_questions": [
                 (
-                    "Authorize a separate source/schema design checkpoint for enforceable "
-                    "slot restrictions and truthful Needs service / Unknown readiness."
+                    "Authorize a narrow atomic onboarding service checkpoint before "
+                    "any production commit."
                 ),
             ],
             "design_notes": {
@@ -178,9 +147,9 @@ class AMSOnboardingPreview:
                     "No assignment, spool, quantity, transaction, or audit history is rewritten."
                 ),
                 "readiness": (
-                    "Operational status can be represented as degraded/operating. "
-                    "Maintenance links remain blocked because schema 19 cannot truthfully "
-                    "represent Needs service for AMS 1 or Unknown for AMS 2."
+                    "AMS 1 is Degraded with an in-progress maintenance fault and "
+                    "Monitor during printing readiness; AMS 2 remains unlinked so its "
+                    "readiness projects Unknown until inspection."
                 ),
                 "provenance": (
                     "No purchase or receiving link is proposed. Any later provenance remains inert."
@@ -201,6 +170,7 @@ class AMSOnboardingPreview:
         equipment_type,
         subtype,
         maintenance_asset,
+        maintenance_number,
     ):
         slots = [
             dict(row)
@@ -235,6 +205,73 @@ class AMSOnboardingPreview:
                     "physical_match": self._slot_matches(stored, expected["color"]),
                 }
             )
+        maintenance_issue = None
+        if legacy["name"] == "AMS 1":
+            maintenance_issue = {
+                "maintenance_asset_link": {
+                    "equipment_id": "<allocated THS-EQP-000002 row ID>",
+                    "maintenance_asset_id": maintenance_asset["id"],
+                    "linked_by": "Cowboy",
+                    "linked_at": self.SYSTEM_COMMIT_TIME,
+                },
+                "maintenance_asset_update": {
+                    "id": maintenance_asset["id"],
+                    "readiness_state_before": maintenance_asset["readiness_state"],
+                    "readiness_state_after": "monitor_during_printing",
+                    "updated_at": self.SYSTEM_COMMIT_TIME,
+                    "meaning": (
+                        "AMS remains usable with Slot 2 restricted and Slots 1, 3, 4 available."
+                    ),
+                },
+                "maintenance_record": {
+                    "id": "<allocated at commit>",
+                    "event_number": maintenance_number,
+                    "asset_id": maintenance_asset["id"],
+                    "event_type": "fault_discovered",
+                    "status": "in_progress",
+                    "severity": "high",
+                    "discovered_at": self.ONBOARDING_EFFECTIVE_AT,
+                    "due_at": None,
+                    "completed_at": None,
+                    "symptoms": (
+                        "Affected component: Slot 2 / A2. Reported symptom: "
+                        "the feeder/roller becomes loud and may lock."
+                    ),
+                    "likely_cause": None,
+                    "corrective_action": (
+                        "Required resolution: inspect, repair, and function-test "
+                        "Slot 2 / A2 before returning it to service."
+                    ),
+                    "parts_required": None,
+                    "parts_used": None,
+                    "notes": (
+                        "Restriction: Slot 2 / A2 is Out of service — do not load "
+                        "filament. Slot 4 / A4 remains in service; it has historically "
+                        "rewound faster than the spool and should be monitored. Slot 4 "
+                        "is currently loaded with Cocoa Brown and functioning."
+                    ),
+                    "related_print_id": None,
+                    "unattended_printing_allowed": True,
+                    "created_by": "Cowboy",
+                    "created_at": self.SYSTEM_COMMIT_TIME,
+                    "updated_at": self.SYSTEM_COMMIT_TIME,
+                },
+                "maintenance_history": {
+                    "action_type": "record_fault",
+                    "previous_status": None,
+                    "new_status": "in_progress",
+                    "previous_readiness_state": maintenance_asset["readiness_state"],
+                    "new_readiness_state": "monitor_during_printing",
+                    "actor": "Cowboy",
+                    "occurred_at": self.SYSTEM_COMMIT_TIME,
+                    "immutable": True,
+                },
+                "slot_2_assignment_precondition": {
+                    "slot_id": 2,
+                    "must_be_empty": True,
+                    "create_assignment": False,
+                },
+            }
         return {
             "registry_record": {
                 "id": "<allocated at commit>",
@@ -286,11 +323,8 @@ class AMSOnboardingPreview:
                 "linked_at": self.SYSTEM_COMMIT_TIME,
             },
             "existing_maintenance_asset": maintenance_asset,
-            "maintenance_link_proposed": False,
-            "maintenance_link_reason": (
-                "Blocked until readiness can represent confirmed facts without "
-                "projecting the legacy asset's current Normal state."
-            ),
+            "maintenance_link_proposed": legacy["name"] == "AMS 1",
+            "maintenance_issue": maintenance_issue,
             "existing_slots_unchanged": slots,
             "expected_audit": [
                 "register_equipment",
@@ -485,6 +519,19 @@ class AMSOnboardingPreview:
         return result
 
     @staticmethod
+    def _next_maintenance_number(db):
+        maximum = db.execute(
+            """
+            SELECT MAX(CAST(SUBSTR(event_number,LENGTH('THS-MNT')+2) AS INTEGER))
+            FROM (
+              SELECT event_number FROM maintenance_events
+              UNION ALL SELECT event_number FROM maintenance_records
+            ) WHERE event_number LIKE 'THS-MNT-%'
+            """
+        ).fetchone()[0] or 0
+        return f"THS-MNT-{maximum + 1:06d}"
+
+    @staticmethod
     def _protected_fingerprints(db):
         result = {}
         for table in (
@@ -539,6 +586,31 @@ class AMSOnboardingPreview:
                 },
             ]
         )
+        ams_1 = units[0]
+        rows.extend(
+            [
+                {
+                    "table": "equipment_maintenance_asset_links",
+                    "operation": "INSERT",
+                    "equipment": ams_1["registry_record"]["equipment_number"],
+                    "maintenance_asset_id": ams_1["existing_maintenance_asset"]["id"],
+                },
+                {
+                    "table": "maintenance_records",
+                    "operation": "INSERT",
+                    "equipment": ams_1["registry_record"]["equipment_number"],
+                    "event_number": ams_1["maintenance_issue"]["maintenance_record"][
+                        "event_number"
+                    ],
+                },
+                {
+                    "table": "maintenance_history",
+                    "operation": "INSERT",
+                    "equipment": ams_1["registry_record"]["equipment_number"],
+                    "action_type": "record_fault",
+                },
+            ]
+        )
         return {
             "inserts": rows,
             "updates": [
@@ -546,16 +618,20 @@ class AMSOnboardingPreview:
                     "table": "equipment_registry",
                     "equipment": parent["equipment_number"],
                     "fields": ["manufacturer_serial_number", "state_version", "updated_at"],
-                }
+                },
+                {
+                    "table": "maintenance_assets",
+                    "equipment": ams_1["registry_record"]["equipment_number"],
+                    "maintenance_asset_id": ams_1["existing_maintenance_asset"]["id"],
+                    "fields": ["readiness_state", "updated_at"],
+                },
             ],
             "deletes": [],
             "slot_rows_created": 0,
             "slot_rows_changed": 0,
             "assignment_rows_changed": 0,
             "total_insert_rows": len(rows),
-            "blocked_required_rows": (
-                "Not countable until slot restriction/readiness schema is approved."
-            ),
+            "blocked_required_rows": 0,
         }
 
     @staticmethod
