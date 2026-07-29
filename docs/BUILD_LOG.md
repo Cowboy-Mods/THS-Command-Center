@@ -358,3 +358,25 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   controls enabled and zero database writes.
 - The physically approved 032/039 correction remains unapplied pending its
   separate audited correction checkpoint.
+# 2026-07-28 — Verified 032/039 production spool correction
+
+- Reverified production schema 19, required SHA-256, integrity, foreign keys,
+  repository state, both backups, and the exact pre-correction assignments.
+- Created a fresh byte-matched schema-19 backup immediately before the write.
+- Ran the real flexible-service preview inside a rolled-back transaction and
+  proved zero production writes.
+- Applied the exact three-action correction atomically through the schema-19
+  service workflow.
+- Created workflow 1; transactions/lines 23–25; actions 40–42; closed
+  assignments 4 and 7; and created active assignment 9.
+- Production now records 32 Open at Open-Spool Wall, 39 Loaded in AMS 2 Slot 1,
+  and AMS 1 Slot 4 empty.
+- Permanent IDs, catalog/product/color/notes, and all quantities were preserved.
+- All 69 unrelated protected table fingerprints remained unchanged; integrity
+  remained `ok` and foreign-key violations remained zero.
+- Production SHA-256 changed only for the authorized correction from
+  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`
+  to
+  `D50AA7C4F437FE7717F04DFF5F34448EB38C209C7BA2C23F8D0B2CB1DB637091`.
+- Focused tests passed: 34. Full regression passed: 321.
+- Dashboard and guided replacement routes returned HTTP 200 with zero writes.
