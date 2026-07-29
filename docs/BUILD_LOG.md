@@ -339,3 +339,22 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   pending separate explicit authorization.
 - Focused Migration 019/service/UI/correction-preview tests passed: 34.
 - Full regression suite passed: 321.
+# 2026-07-28 — Migration 019 production deployment and validation
+
+- Reverified the exact readiness SHA-256, schema 18, clean integrity/foreign
+  keys, repository state, sole pending migration, and byte-matched external
+  rollback backup before opening production for write.
+- Applied only `019_flexible_spool_replacement.sql`; production advanced
+  exactly 18 to 19.
+- Production after SHA-256:
+  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`.
+- All 75 protected content fingerprints, both target spools, equipment,
+  telemetry, and workflow row counts remained unchanged.
+- Post-deployment integrity and quick checks were `ok`; foreign-key violations
+  remained zero.
+- Focused Migration 019/service/UI/preview tests passed: 34.
+- Full regression suite passed: 321.
+- Dashboard and guided replacement routes returned HTTP 200 with schema-19
+  controls enabled and zero database writes.
+- The physically approved 032/039 correction remains unapplied pending its
+  separate audited correction checkpoint.
