@@ -414,3 +414,22 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   violations, and unchanged SHA-256
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
 - Main and all protected production records remained untouched.
+# 2026-07-29 — AMS 2 Pro zero-write onboarding preview
+
+- Added a read-only Equipment Registry preview for two reported Bambu Lab
+  AMS 2 Pro units.
+- Proposed permanent identities `THS-EQP-000002` and `THS-EQP-000003` while
+  preserving the reported serial strings exactly for physical-label review.
+- Confirmed the eight authoritative legacy slot rows already exist; proposed
+  one-to-one Registry bridges instead of duplicate slot creation.
+- Proved all seven active filament assignments, spool identities, quantities,
+  transactions, and slot rows remain unchanged.
+- Documented the exact 16-row future insert set, immutable relationship
+  history, audit events, duplicate protections, rollback, and confirmation
+  questions.
+- Focused equipment/inventory suites passed: 115. Full regression passed: 335.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- No production write, schema change, telemetry work, health-module work,
+  equipment onboarding, or Main change occurred.
