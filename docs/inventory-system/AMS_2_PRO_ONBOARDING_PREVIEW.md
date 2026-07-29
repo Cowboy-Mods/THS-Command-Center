@@ -2,7 +2,7 @@
 
 Date: 2026-07-29  
 Source baseline:
-`cb42776192600ce8c0fab541a268cde33557aa54`
+`29dedef5f9b57978402e41dfe44b1617ca1fff2e`
 Production database:
 `C:\Users\Cowboy\Documents\THS-Command-Center-Data\inventory.sqlite3`  
 Mode: physically confirmed planning; no production write
@@ -18,8 +18,10 @@ Slot 2 remains a slot, not independent equipment. Its restriction is scoped
 inside an AMS 1 maintenance fault record. AMS 1 remains operational with
 restrictions; the whole unit is not marked unavailable.
 
-The preview is not production-ready until a narrow atomic onboarding service
-can commit every proposed row and rollback every child action together.
+The prior 21-insert atomic plan is stale and must be regenerated. The preview
+is not production-ready until a narrow atomic onboarding service can commit
+every proposed row, including the feeder inventory, and rollback every child
+action together.
 
 No migration, service change, equipment record, relationship, restriction,
 maintenance record, slot change, assignment change, or production write was
@@ -39,6 +41,12 @@ performed.
 
 The checksum matches the last verified value. No intervening production
 database activity was detected.
+
+Temporary-data validation:
+
+- focused equipment, inventory, AMS, maintenance, and replacement suites:
+  **135 passed**;
+- full regression suite: **339 passed**.
 
 ## Current listeners — inspected, not changed
 
@@ -204,6 +212,40 @@ readiness therefore remains null / Unknown until a formal inspection.
 One immutable `maintenance_history.record_fault` row records status null to
 In progress and readiness Normal to Monitor during printing.
 
+## Physically verified candidate repair part
+
+Cowboy physically verified the following boxed part:
+
+| Field | Confirmed value |
+|---|---|
+| Product | Bambu Lab AMS 2 Pro Feeder Unit |
+| Model | `SA403-V1` |
+| UPC | `6937285503237` |
+| Quantity | 1 |
+| Condition | New/boxed |
+| Intended use | AMS 1 Slot 2/A2 feeder repair |
+| Installed | No |
+
+Production catalog items, attributes, inventory instances, stock lots,
+purchase lines, and notes were searched read-only by exact product name,
+model, and UPC. No matching part exists. The preview therefore proposes one
+individually tracked candidate part, `THS-PART-000001`, plus the minimum
+catalog configuration and immutable add transaction needed to represent it.
+
+The part remains available only. It is not reserved, issued, consumed,
+installed, or treated as a completed repair. The maintenance record's
+`parts_required` field identifies it as the available candidate for
+`THS-MNT-000002`.
+
+Production has no location named `THS Bambu Maintenance Cabinet`. No location
+row is proposed, and the candidate instance's `location_id` remains null in
+this preview. Cowboy must confirm the part's current physical storage before
+a production plan can be approved. The cabinet name will not be invented.
+
+After Slot 2 is repaired and function-tested, a separate decision will
+determine whether to buy one additional `SA403-V1` as a sealed shelf spare.
+This preview does not order or record a second feeder.
+
 The current schema has no dedicated `affected_component` or `restriction`
 columns. The maintenance record therefore identifies those labels explicitly
 inside `symptoms`, `corrective_action`, and `notes`, as authorized. No new
@@ -227,6 +269,7 @@ One signed commit must bind:
 - AMS 1 readiness update;
 - the Slot 2-scoped maintenance record;
 - the Slot 4 monitoring note inside that record;
+- one verified candidate feeder part with catalog and immutable add history;
 - maintenance history and all equipment audit/history rows.
 
 Direct production SQL is not approved.
@@ -235,13 +278,13 @@ Direct production SQL is not approved.
 
 Under the existing schema, the complete proposal contains:
 
-- **21 inserted rows**;
+- **29 inserted rows**;
 - **2 updated rows**;
 - **0 deleted rows**;
 - **0 slot rows created or changed**;
 - **0 assignment rows changed**.
 
-The 21 proposed inserts are:
+The 29 proposed inserts are:
 
 | Table | Count | Purpose |
 |---|---:|---|
@@ -254,7 +297,13 @@ The 21 proposed inserts are:
 | `equipment_maintenance_asset_links` | 1 | Link `THS-EQP-000002` to existing AMS 1 maintenance asset |
 | `maintenance_records` | 1 | Slot 2/A2-scoped fault and Slot 4 monitoring note |
 | `maintenance_history` | 1 | Immutable `record_fault` event |
-| **Total** | **21** | |
+| `item_types` | 1 | Individually tracked Printer Part type using `THS-PART` |
+| `catalog_items` | 1 | Exact Bambu feeder product, model, and UPC |
+| `inventory_instances` | 1 | `THS-PART-000001`, new/boxed, quantity 1 |
+| `inventory_transactions` | 1 | Immutable `add` transaction |
+| `transaction_lines` | 1 | Quantity 1 for the candidate instance |
+| `audit_events` | 3 | Item type, catalog item, and instance creation |
+| **Total** | **29** | |
 
 The two proposed updates are:
 
@@ -279,6 +328,13 @@ Additional immutable maintenance audit:
 8. `THS-MNT-000002` — `maintenance_history.record_fault`, previous readiness
    Normal, new readiness Monitor during printing.
 
+Additional candidate-part audit:
+
+9. `Printer Part` - `create_item_type`;
+10. Bambu Lab AMS 2 Pro Feeder Unit - `create_catalog_item`;
+11. `THS-PART-000001` - `add_individual_instance`, linked to one immutable
+    `inventory_transactions.add` row and one transaction line.
+
 ## Duplicate and stale-state protections
 
 A future commit must reject:
@@ -294,6 +350,11 @@ A future commit must reject:
 - anything other than unique slot numbers 1–4 per legacy AMS;
 - any duplicate active spool in a slot or duplicate active slot for a spool;
 - any onboarding state in which Slot 2/A2 is not empty;
+- any existing match for the product name, `SA403-V1`, or UPC
+  `6937285503237`;
+- a changed next `THS-PART` permanent-ID sequence;
+- candidate-part state that says consumed, issued, installed, or reserved;
+- any unconfirmed or invented storage location;
 - stale P1S, AMS, maintenance, slot, assignment, or sequence snapshots;
 - expired, tampered, replayed, or reused previews.
 
@@ -304,14 +365,15 @@ produce friendly errors before commit.
 
 The final production write must use one transaction. If any P1S update, AMS
 registration, relationship, bridge, readiness, restriction, maintenance,
-history, or audit action fails, every child action rolls back.
+candidate-part catalog/inventory, history, or audit action fails, every child
+action rolls back.
 
 Before future production authorization:
 
 1. resolve the duplicate untracked listener under separate authorization;
 2. reverify branch, source commit, schema, checksum, integrity, foreign keys,
    P1S state, next equipment IDs, legacy containers, slots, assignments, and
-   maintenance assets;
+   maintenance assets, then repeat the exact feeder duplicate search;
 3. create and hash-verify a fresh external backup;
 4. build a fresh signed preview using the actual future onboarding time;
 5. rehearse the complete atomic workflow on a verified production copy;
@@ -339,6 +401,10 @@ After a later authorized commit:
 - AMS 2 must project Operating / Unknown readiness;
 - Slot 2/A2 must be empty, Out of service, and reject loading;
 - Slot 4/A4 must remain loaded and operational with its monitoring note;
+- exactly one `SA403-V1` / UPC `6937285503237` candidate part must exist;
+- that part must remain new/boxed, quantity 1, uninstalled, unreserved,
+  unissued, and unconsumed;
+- no second feeder or invented cabinet location may exist;
 - the same eight slot IDs and seven active assignment IDs must remain;
 - all spool identities, catalog identities, colors, weights, quantities,
   transactions, and prior audit rows must fingerprint unchanged;
@@ -348,7 +414,9 @@ After a later authorized commit:
 
 ## Boundary
 
-All physical facts are recorded in the revised preview. No new schema or
-slot-equipment model is required by this plan. Production onboarding remains
-blocked on a separately approved atomic service checkpoint. Stop for explicit
-authorization.
+The AMS operational correction is preserved, and the verified feeder evidence
+has been added. No new schema or slot-equipment model is required. The prior
+atomic plan must be regenerated because the write set changed from 21 to 29
+inserts. Production onboarding also remains blocked on confirmation of the
+part's current storage location and a separately approved atomic service
+checkpoint. Stop for explicit authorization.

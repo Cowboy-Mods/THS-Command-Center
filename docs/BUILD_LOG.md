@@ -394,6 +394,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
 - No production data or schema changed. Deployment remains blocked pending
   explicit approval.
 # 2026-07-29 — Filament swatch production deployment
@@ -471,6 +472,27 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   passed: 337.
 - No migration is proposed. Production remains blocked only on a narrow atomic
   onboarding service checkpoint and explicit authorization.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
+# 2026-07-29 - AMS Slot 2 feeder candidate preview
+
+- Preserved AMS 1 as Installed / Operational with restrictions and its
+  equipment-level readiness as Needs service; A2 remains an existing empty
+  slot with an Out-of-service / Do-not-load restriction.
+- Reinspected production read-only for Bambu Lab AMS 2 Pro Feeder Unit,
+  model `SA403-V1`, UPC `6937285503237`; no catalog, inventory, lot, or
+  purchase-line match exists.
+- Added one proposed `THS-PART-000001` new/boxed candidate part. It remains
+  uninstalled, unreserved, unissued, and unconsumed.
+- Production has no `THS Bambu Maintenance Cabinet` location. No location row
+  is proposed; physical storage confirmation remains required.
+- Regenerated the zero-write plan from 21 to 29 inserts, with 2 updates,
+  0 deletes, 0 slot changes, and 0 filament-assignment changes.
+- Added duplicate-part, part-state, and no-invented-location preview coverage.
+- Focused equipment/inventory/AMS/maintenance/replacement suites passed: 135.
+  Full regression passed: 339.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.

@@ -62,6 +62,7 @@ class AMSOnboardingPreview:
             counts = self._counts(db)
             maintenance_assets = self._maintenance_assets(db)
             maintenance_number = self._next_maintenance_number(db)
+            repair_part = self._repair_part_preview(db)
             units = []
             for index, legacy in enumerate(legacy_units):
                 units.append(
@@ -77,6 +78,7 @@ class AMSOnboardingPreview:
                         subtype=subtype,
                         maintenance_asset=maintenance_assets[legacy["id"]],
                         maintenance_number=maintenance_number,
+                        repair_part=repair_part,
                     )
                 )
             protected = self._protected_fingerprints(db)
@@ -116,7 +118,9 @@ class AMSOnboardingPreview:
             "before_counts": counts,
             "units": units,
             "protected_fingerprints": protected,
-            "expected_row_changes": self._expected_row_changes(units, parent),
+            "expected_row_changes": self._expected_row_changes(
+                units, parent, repair_part
+            ),
             "production_ready": False,
             "architecture_blockers": [
                 (
@@ -127,11 +131,18 @@ class AMSOnboardingPreview:
                 (
                     "The current service has no single atomic workflow for P1S fact "
                     "correction, two registrations, relationships, legacy bridges, "
-                    "the AMS 1 maintenance link, record, readiness update, and history."
+                    "the AMS 1 maintenance link, record, readiness update, repair-part "
+                    "inventory, and history."
                 ),
             ],
             "maintenance_representation": units[0]["maintenance_issue"],
+            "repair_part": repair_part,
             "confirmation_questions": [
+                (
+                    "Confirm the feeder unit's current physical storage location. "
+                    "THS Bambu Maintenance Cabinet does not exist in production and "
+                    "no location row is proposed."
+                ),
                 (
                     "Authorize a narrow atomic onboarding service checkpoint before "
                     "any production commit."
@@ -154,6 +165,10 @@ class AMSOnboardingPreview:
                 "provenance": (
                     "No purchase or receiving link is proposed. Any later provenance remains inert."
                 ),
+                "repair_part": (
+                    "The boxed feeder is available candidate inventory only. It is not "
+                    "reserved, issued, consumed, installed, or recorded as a completed repair."
+                ),
             },
         }
 
@@ -171,6 +186,7 @@ class AMSOnboardingPreview:
         subtype,
         maintenance_asset,
         maintenance_number,
+        repair_part,
     ):
         slots = [
             dict(row)
@@ -242,7 +258,11 @@ class AMSOnboardingPreview:
                         "Required resolution: inspect, repair, and function-test "
                         "Slot 2 / A2 before returning it to service."
                     ),
-                    "parts_required": None,
+                    "parts_required": (
+                        f"Available candidate part: {repair_part['candidate_reference']} "
+                        f"Bambu Lab AMS 2 Pro Feeder Unit, model SA403-V1, "
+                        f"UPC 6937285503237. Not reserved, issued, consumed, or installed."
+                    ),
                     "parts_used": None,
                     "notes": (
                         "Restriction: Slot 2 / A2 is Out of service — do not load "
@@ -548,7 +568,7 @@ class AMSOnboardingPreview:
         return result
 
     @staticmethod
-    def _expected_row_changes(units, parent):
+    def _expected_row_changes(units, parent, repair_part):
         rows = []
         for unit in units:
             number = unit["registry_record"]["equipment_number"]
@@ -611,6 +631,55 @@ class AMSOnboardingPreview:
                 },
             ]
         )
+        if not repair_part["matching_part_found"]:
+            rows.extend(
+                [
+                    {
+                        "table": "item_types",
+                        "operation": "INSERT",
+                        "item_type": "Printer Part",
+                    },
+                    {
+                        "table": "audit_events",
+                        "operation": "INSERT",
+                        "event_type": "create_item_type",
+                        "entity": "Printer Part",
+                    },
+                    {
+                        "table": "catalog_items",
+                        "operation": "INSERT",
+                        "product": repair_part["product_name"],
+                    },
+                    {
+                        "table": "audit_events",
+                        "operation": "INSERT",
+                        "event_type": "create_catalog_item",
+                        "entity": repair_part["product_name"],
+                    },
+                    {
+                        "table": "inventory_instances",
+                        "operation": "INSERT",
+                        "instance": repair_part["proposed_instance"]["permanent_id"],
+                    },
+                    {
+                        "table": "inventory_transactions",
+                        "operation": "INSERT",
+                        "transaction_type": "add",
+                        "instance": repair_part["proposed_instance"]["permanent_id"],
+                    },
+                    {
+                        "table": "transaction_lines",
+                        "operation": "INSERT",
+                        "instance": repair_part["proposed_instance"]["permanent_id"],
+                    },
+                    {
+                        "table": "audit_events",
+                        "operation": "INSERT",
+                        "event_type": "add_individual_instance",
+                        "entity": repair_part["proposed_instance"]["permanent_id"],
+                    },
+                ]
+            )
         return {
             "inserts": rows,
             "updates": [
@@ -632,6 +701,149 @@ class AMSOnboardingPreview:
             "assignment_rows_changed": 0,
             "total_insert_rows": len(rows),
             "blocked_required_rows": 0,
+        }
+
+    @staticmethod
+    def _repair_part_preview(db):
+        product_name = "Bambu Lab AMS 2 Pro Feeder Unit"
+        model = "SA403-V1"
+        upc = "6937285503237"
+        matches = [
+            dict(row)
+            for row in db.execute(
+                """
+                SELECT DISTINCT ci.id catalog_item_id,ci.name,ci.product_line,
+                       ci.variant,ci.manufacturer_sku,ci.notes catalog_notes,
+                       ii.id instance_id,ii.permanent_id,ii.state,ii.condition,
+                       ii.location_id,ii.notes instance_notes
+                FROM catalog_items ci
+                LEFT JOIN inventory_instances ii ON ii.catalog_item_id=ci.id
+                LEFT JOIN catalog_item_attribute_values av
+                  ON av.catalog_item_id=ci.id
+                WHERE lower(trim(ci.name))=lower(trim(?))
+                   OR lower(trim(COALESCE(ci.manufacturer_sku,'')))=lower(trim(?))
+                   OR lower(trim(COALESCE(ci.variant,'')))=lower(trim(?))
+                   OR instr(lower(COALESCE(ci.notes,'')),lower(?))>0
+                   OR instr(lower(COALESCE(ii.notes,'')),lower(?))>0
+                   OR instr(lower(COALESCE(av.text_value,'')),lower(?))>0
+                ORDER BY ci.id,ii.id
+                """,
+                (product_name, model, model, upc, upc, upc),
+            )
+        ]
+        purchase_matches = [
+            dict(row)
+            for row in db.execute(
+                """
+                SELECT id,description,vendor_sku,catalog_item_id,quantity_ordered,notes
+                FROM purchase_order_lines
+                WHERE lower(trim(description))=lower(trim(?))
+                   OR lower(trim(COALESCE(vendor_sku,'')))=lower(trim(?))
+                   OR instr(lower(COALESCE(notes,'')),lower(?))>0
+                ORDER BY id
+                """,
+                (product_name, model, upc),
+            )
+        ]
+        cabinet = db.execute(
+            """
+            SELECT id,parent_id,name,kind,archived_at FROM locations
+            WHERE lower(trim(name))=lower(trim(?))
+            """,
+            ("THS Bambu Maintenance Cabinet",),
+        ).fetchall()
+        if len(cabinet) > 1:
+            raise AMSOnboardingPreviewError(
+                "multiple THS Bambu Maintenance Cabinet locations exist"
+            )
+        existing_prefix = db.execute(
+            "SELECT id,name,tracking_method,id_prefix FROM item_types WHERE id_prefix='THS-PART'"
+        ).fetchone()
+        next_number = 1
+        if existing_prefix:
+            for row in db.execute(
+                "SELECT permanent_id FROM inventory_instances WHERE permanent_id LIKE 'THS-PART-%'"
+            ):
+                try:
+                    next_number = max(
+                        next_number,
+                        int(row[0].removeprefix("THS-PART-")) + 1,
+                    )
+                except ValueError as exc:
+                    raise AMSOnboardingPreviewError(
+                        "existing printer-part permanent ID sequence is invalid"
+                    ) from exc
+        matching_part_found = bool(matches)
+        candidate_reference = (
+            matches[0]["permanent_id"]
+            if matching_part_found and matches[0]["permanent_id"]
+            else (
+                f"catalog item {matches[0]['catalog_item_id']}"
+                if matching_part_found
+                else f"THS-PART-{next_number:06d}"
+            )
+        )
+        return {
+            "product_name": product_name,
+            "model": model,
+            "upc": upc,
+            "quantity": 1,
+            "condition": "New/boxed",
+            "intended_use": "AMS 1 Slot 2 / A2 feeder repair",
+            "installation_state": "Not installed",
+            "catalog_or_inventory_matches": matches,
+            "purchase_line_matches": purchase_matches,
+            "matching_part_found": matching_part_found,
+            "candidate_reference": candidate_reference,
+            "duplicate_creation_allowed": False,
+            "proposed_item_type": None
+            if matching_part_found
+            else {
+                "name": "Printer Part",
+                "category": "3D Printing",
+                "tracking_method": "individual",
+                "id_prefix": "THS-PART",
+                "default_unit": "ea",
+            },
+            "proposed_catalog_item": None
+            if matching_part_found
+            else {
+                "manufacturer": "Bambu Lab",
+                "name": product_name,
+                "product_line": "AMS 2 Pro",
+                "variant": model,
+                "manufacturer_sku": model,
+                "base_unit": "ea",
+                "notes": f"UPC {upc}. Candidate maintenance part.",
+            },
+            "proposed_instance": None
+            if matching_part_found
+            else {
+                "permanent_id": f"THS-PART-{next_number:06d}",
+                "state": "sealed",
+                "condition": "new/boxed",
+                "location_id": cabinet[0]["id"] if cabinet else None,
+                "location_name": cabinet[0]["name"] if cabinet else None,
+                "location_confirmation_required": not bool(cabinet),
+                "original_quantity": 1,
+                "remaining_quantity": 1,
+                "unit": "ea",
+                "verified": True,
+                "installed": False,
+                "reserved": False,
+                "issued": False,
+                "consumed": False,
+                "notes": (
+                    f"UPC {upc}. Available candidate for AMS 1 Slot 2 / A2 feeder "
+                    "repair. Not installed, reserved, issued, or consumed."
+                ),
+            },
+            "cabinet_location_match": dict(cabinet[0]) if cabinet else None,
+            "storage_confirmation_required": not bool(cabinet),
+            "future_decision": (
+                "After Slot 2 is repaired and function-tested, decide whether to "
+                "purchase one additional SA403-V1 as a sealed shelf spare."
+            ),
         }
 
     @staticmethod

@@ -67,7 +67,7 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
             [unit["registry_record"]["equipment_number"] for unit in result["units"]],
             ["THS-EQP-000002", "THS-EQP-000003"],
         )
-        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 21)
+        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 29)
         self.assertEqual(len(result["expected_row_changes"]["updates"]), 2)
         self.assertEqual(
             result["parent_serial_correction"]["manufacturer_serial_number_after"],
@@ -268,6 +268,108 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
         with self.assertRaisesRegex(AMSOnboardingPreviewError, "conflicts"):
             self.build()
         self.assertEqual(before, self.database.read_bytes())
+
+    def test_10_verified_feeder_is_previewed_once_without_install_or_consumption(self):
+        result = self.build()
+        part = result["repair_part"]
+        self.assertFalse(part["matching_part_found"])
+        self.assertEqual(part["product_name"], "Bambu Lab AMS 2 Pro Feeder Unit")
+        self.assertEqual(part["model"], "SA403-V1")
+        self.assertEqual(part["upc"], "6937285503237")
+        self.assertEqual(part["quantity"], 1)
+        self.assertEqual(part["condition"], "New/boxed")
+        self.assertEqual(part["proposed_instance"]["permanent_id"], "THS-PART-000001")
+        self.assertIsNone(part["proposed_instance"]["location_id"])
+        self.assertTrue(part["storage_confirmation_required"])
+        self.assertFalse(part["proposed_instance"]["installed"])
+        self.assertFalse(part["proposed_instance"]["reserved"])
+        self.assertFalse(part["proposed_instance"]["issued"])
+        self.assertFalse(part["proposed_instance"]["consumed"])
+        self.assertIn(
+            "THS-PART-000001",
+            result["maintenance_representation"]["maintenance_record"]["parts_required"],
+        )
+        part_rows = [
+            row
+            for row in result["expected_row_changes"]["inserts"]
+            if row["table"]
+            in {
+                "item_types",
+                "catalog_items",
+                "inventory_instances",
+                "inventory_transactions",
+                "transaction_lines",
+            }
+        ]
+        self.assertEqual(len(part_rows), 5)
+
+    def test_11_existing_exact_feeder_match_blocks_duplicate_part_creation(self):
+        db = connect(self.database)
+        try:
+            category_id = db.execute(
+                "SELECT id FROM categories WHERE name='3D Printing'"
+            ).fetchone()[0]
+            unit_id = db.execute(
+                "SELECT id FROM units WHERE code='ea'"
+            ).fetchone()[0]
+            manufacturer_id = db.execute(
+                "SELECT id FROM manufacturers WHERE name='Bambu Lab'"
+            ).fetchone()[0]
+            actions = InventoryActionService(
+                db, ActionContext("Fixture", "ams-preview-test", "system")
+            )
+            item_type_id = actions.ensure_item_type(
+                category_id,
+                "Printer Part",
+                "individual",
+                unit_id,
+                id_prefix="THS-PART",
+            )
+            catalog_id, _ = actions.ensure_catalog_item(
+                item_type_id,
+                manufacturer_id,
+                "Bambu Lab AMS 2 Pro Feeder Unit",
+                "AMS 2 Pro",
+                "SA403-V1",
+                unit_id,
+                notes="UPC 6937285503237.",
+            )
+            instance_id = actions.add_individual_instance(
+                catalog_id,
+                state="sealed",
+                location_id=None,
+                original_quantity=1,
+                remaining_quantity=1,
+                unit_id=unit_id,
+                permanent_id="THS-PART-000001",
+                condition="new/boxed",
+                notes="UPC 6937285503237.",
+                verified=True,
+            )
+            db.commit()
+        finally:
+            db.close()
+        result = self.build()
+        self.assertTrue(result["repair_part"]["matching_part_found"])
+        self.assertEqual(
+            result["repair_part"]["catalog_or_inventory_matches"][0]["instance_id"],
+            instance_id,
+        )
+        self.assertIsNone(result["repair_part"]["proposed_instance"])
+        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 21)
+        self.assertFalse(
+            any(
+                row["table"]
+                in {
+                    "item_types",
+                    "catalog_items",
+                    "inventory_instances",
+                    "inventory_transactions",
+                    "transaction_lines",
+                }
+                for row in result["expected_row_changes"]["inserts"]
+            )
+        )
 
 
 if __name__ == "__main__":
