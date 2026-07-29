@@ -12,8 +12,9 @@ from inventory.equipment import EquipmentRegistryService
 
 
 class AMSOnboardingPreviewTests(unittest.TestCase):
-    AMS_1_SERIAL = "19C-06A-522-00-22-97"
-    AMS_2_SERIAL = "19C-51A-6-204-00 EWR"
+    P1S_SERIAL = "01P00C511401400"
+    AMS_1_SERIAL = "19C06A522002297"
+    AMS_2_SERIAL = "19C51A620400EWR"
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -50,6 +51,7 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
 
     def build(self, **changes):
         values = {
+            "parent_serial": self.P1S_SERIAL,
             "ams_1_serial": self.AMS_1_SERIAL,
             "ams_2_serial": self.AMS_2_SERIAL,
         }
@@ -65,9 +67,14 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
             [unit["registry_record"]["equipment_number"] for unit in result["units"]],
             ["THS-EQP-000002", "THS-EQP-000003"],
         )
-        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 16)
-        self.assertEqual(result["expected_row_changes"]["updates"], [])
+        self.assertEqual(result["expected_row_changes"]["total_insert_rows"], 18)
+        self.assertEqual(len(result["expected_row_changes"]["updates"]), 1)
+        self.assertEqual(
+            result["parent_serial_correction"]["manufacturer_serial_number_after"],
+            self.P1S_SERIAL,
+        )
         self.assertEqual(result["expected_row_changes"]["deletes"], [])
+        self.assertFalse(result["production_ready"])
 
     def test_02_reported_serial_spacing_and_exact_names_are_preserved(self):
         result = self.build()
@@ -79,10 +86,10 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
             result["units"][1]["registry_record"]["manufacturer_serial_number"],
             self.AMS_2_SERIAL,
         )
+        self.assertNotIn(" ", result["units"][1]["registry_record"]["manufacturer_serial_number"])
+        self.assertNotIn("-", result["units"][1]["registry_record"]["manufacturer_serial_number"])
         self.assertTrue(
-            result["units"][1]["registry_record"]["manufacturer_serial_number"].endswith(
-                "00 EWR"
-            )
+            result["units"][1]["registry_record"]["manufacturer_serial_number"].endswith("EWR")
         )
         self.assertEqual(
             [unit["registry_record"]["display_name"] for unit in result["units"]],
@@ -138,6 +145,14 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
         self.assertEqual(result["expected_row_changes"]["slot_rows_created"], 0)
         self.assertEqual(result["expected_row_changes"]["slot_rows_changed"], 0)
         self.assertEqual(result["expected_row_changes"]["assignment_rows_changed"], 0)
+        self.assertEqual(slots[1]["bambu_designation"], "A2")
+        self.assertEqual(
+            slots[1]["confirmed_availability"], "empty_out_of_service_do_not_load"
+        )
+        self.assertEqual(slots[3]["confirmed_availability"], "usable_monitor")
+        self.assertTrue(self.preview._slot_matches("cyan", "Blue"))
+        self.assertTrue(self.preview._slot_matches("Jade White", "White"))
+        self.assertFalse(self.preview._slot_matches("Orange", "Blue"))
 
     def test_04_duplicate_reported_or_registered_serial_is_rejected(self):
         with self.assertRaisesRegex(AMSOnboardingPreviewError, "serials are duplicates"):
@@ -152,7 +167,7 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
         )
         db.commit()
         db.close()
-        with self.assertRaisesRegex(AMSOnboardingPreviewError, "already registered"):
+        with self.assertRaisesRegex(AMSOnboardingPreviewError, "conflicts|already registered"):
             self.build()
 
     def test_05_missing_or_misnumbered_legacy_slot_is_rejected(self):
@@ -186,13 +201,41 @@ class AMSOnboardingPreviewTests(unittest.TestCase):
 
     def test_07_operational_readiness_restriction_and_provenance_stay_separate(self):
         result = self.build()
+        self.assertEqual(
+            [unit["registry_record"]["operational_status"] for unit in result["units"]],
+            ["degraded", "operating"],
+        )
         for unit in result["units"]:
-            registry = unit["registry_record"]
-            self.assertEqual(registry["operational_status"], "unknown")
-            self.assertEqual(registry["lifecycle_state"], "installed")
-            self.assertIsNone(registry["current_location_id"])
-        self.assertIn("readiness remains null", result["design_notes"]["readiness"])
+            self.assertEqual(unit["registry_record"]["lifecycle_state"], "installed")
+            self.assertIsNone(unit["registry_record"]["current_location_id"])
+            self.assertFalse(unit["maintenance_link_proposed"])
+            self.assertEqual(unit["existing_maintenance_asset"]["readiness_state"], "normal")
+        self.assertEqual(
+            result["required_future_schema_design"]["ams_1_readiness"], "needs_service"
+        )
+        self.assertEqual(
+            result["required_future_schema_design"]["ams_2_readiness"], "unknown"
+        )
+        self.assertTrue(
+            result["required_future_schema_design"]["slot_2"]["must_block_assignment"]
+        )
+        self.assertGreaterEqual(len(result["architecture_blockers"]), 4)
         self.assertIn("No purchase or receiving link", result["design_notes"]["provenance"])
+
+    def test_08_conflicting_parent_serial_is_rejected_without_writes(self):
+        db = connect(self.database)
+        db.execute(
+            """
+            UPDATE equipment_registry SET manufacturer_serial_number='DIFFERENT-P1S'
+            WHERE equipment_number='THS-EQP-000001'
+            """
+        )
+        db.commit()
+        db.close()
+        before = self.database.read_bytes()
+        with self.assertRaisesRegex(AMSOnboardingPreviewError, "conflicts"):
+            self.build()
+        self.assertEqual(before, self.database.read_bytes())
 
 
 if __name__ == "__main__":

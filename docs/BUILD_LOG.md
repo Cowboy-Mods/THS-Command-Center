@@ -433,3 +433,25 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
 - No production write, schema change, telemetry work, health-module work,
   equipment onboarding, or Main change occurred.
+# 2026-07-29 — Physically confirmed AMS preview revision
+
+- Replaced the reported AMS serials with confirmed exact values
+  `19C06A522002297` and `19C51A620400EWR`; added confirmed P1S serial
+  `01P00C511401400`.
+- Confirmed the seven stored slot assignments match physical occupancy.
+  Stored `cyan` and `Jade White` remain unchanged as compatible product names
+  for physical Blue and White.
+- Revised operational states to Degraded for AMS 1 and Operating for AMS 2.
+- Added the confirmed Slot 2 Out-of-service / Do-not-load requirement and Slot
+  4 monitoring fact to the preview.
+- Identified a schema-19 blocker: there is no enforceable slot restriction
+  state, and maintenance readiness cannot represent Needs service or Unknown.
+- Revised the currently representable proposal to 18 inserts, one P1S fact
+  update, zero deletes, and zero slot/assignment changes. The complete count is
+  intentionally deferred until the required schema is approved.
+- Revised focused equipment/inventory suites passed: 116. Full regression
+  passed: 336.
+- Both port-8787 listeners were reinspected read-only and left untouched.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.

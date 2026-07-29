@@ -1,28 +1,30 @@
-# Bambu Lab AMS 2 Pro Onboarding — Zero-Write Preview
+# Bambu Lab AMS 2 Pro Onboarding — Revised Zero-Write Preview
 
 Date: 2026-07-29  
-Branch baseline: `feature/filament-manager-v1` at
-`03537f02cd55bee1fc4eca7d01cbc1aaa9947e72`  
+Source baseline:
+`cb42776192600ce8c0fab541a268cde33557aa54`
 Production database:
 `C:\Users\Cowboy\Documents\THS-Command-Center-Data\inventory.sqlite3`  
-Mode: read-only inspection and source-only preview
+Mode: physically confirmed planning; no production write
 
-## Stop boundary
+## Outcome and stop boundary
 
-This report is not authorization to onboard equipment. It creates no
-Equipment Registry records, relationships, legacy-container links, slots,
-assignments, telemetry, or audit rows.
+The Equipment Registry and legacy AMS state were reinspected read-only using
+Cowboy's confirmed serials, P1S relationship, Bambu Studio A/B designations,
+slot layout, and maintenance facts.
 
-The reported serials below must be verified character-for-character against
-the physical labels before any production write:
+The identity, bridge, relationship, lifecycle, and operational portions can be
+previewed under schema 19. The complete onboarding is **not production-ready**
+because schema 19 cannot truthfully store or enforce:
 
-- AMS 1 reported serial: `19C-06A-522-00-22-97`
-- AMS 2 reported serial: `19C-51A-6-204-00 EWR`
+1. AMS 1 Slot 2 as `Out of service / Do not load`; or
+2. maintenance readiness `Needs service` for AMS 1 and `Unknown` for AMS 2.
 
-The space before `EWR` is preserved exactly as reported. It is not assumed to
-be correct.
+No migration, service change, equipment record, relationship, restriction,
+maintenance record, slot change, assignment change, or production write was
+performed.
 
-## Production safety result
+## Production database safety
 
 | Check | Result |
 |---|---|
@@ -30,225 +32,321 @@ be correct.
 | Latest migration | `019_flexible_spool_replacement.sql` |
 | SQLite quick check | `ok` |
 | Foreign-key violations | 0 |
-| SHA-256 before preview | `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C` |
-| SHA-256 after preview and tests | `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C` |
+| SHA-256 before inspection | `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C` |
+| SHA-256 after inspection | `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C` |
 | Production writes | 0 |
 
-## Existing parent
+The checksum matches the last verified value. No intervening production
+database activity was detected.
 
-| Field | Current production value |
-|---|---|
-| Registry row | 1 |
-| Permanent ID | `THS-EQP-000001` |
-| UUID | `6e55b13d-25a2-4c89-87d6-8b905bf2589e` |
-| Name | Bambu Lab P1S |
-| Manufacturer / model | Bambu Lab / P1S |
-| Manufacturer serial | null |
-| Lifecycle | Installed |
-| Operational status | Operating |
-| Readiness | null |
-| Derived restriction | Unknown |
-| State version | 1 |
+## Current listeners — inspected, not changed
 
-The P1S record is not changed by this proposal. Its currently null
-manufacturer serial is outside this checkpoint.
+| PID | Identity | Status |
+|---:|---|---|
+| 58064 | Verified bootstrap, explicit production database, source deployment record present | Running |
+| 57596 | Untracked `python -m inventory.cli serve --host 127.0.0.1 --port 8787`, no explicit database | Running |
 
-## Proposed Equipment Registry records
+Both processes and their parent/process identities remained unchanged. Neither
+was stopped, restarted, signaled, or otherwise disturbed.
 
-These permanent IDs are the next two values in the current production
-sequence. UUIDs and row IDs are deliberately not generated until a future
-signed, confirmation-bound review.
+## Physically confirmed parent and serial correction
 
-| Field | AMS 1 proposal | AMS 2 proposal |
+Current production P1S:
+
+| Field | Current | Proposed |
+|---|---|---|
+| Equipment | `THS-EQP-000001` Bambu Lab P1S | Unchanged |
+| Registry row | 1 | Unchanged |
+| Manufacturer serial | null | `01P00C511401400` |
+| State version | 1 | 2 |
+| Lifecycle | Installed | Unchanged |
+| Operational status | Operating | Unchanged |
+
+The serial is confirmed from the P1S screen. A future controlled fact update
+would update the P1S row, append immutable `equipment_history.update_facts`,
+and add one `update_equipment_facts` audit event. The permanent identity,
+manufacturer, model, lifecycle, and operational status remain unchanged.
+
+## Proposed AMS Registry records
+
+| Field | AMS 1 | AMS 2 |
 |---|---|---|
 | Permanent ID | `THS-EQP-000002` | `THS-EQP-000003` |
 | Display name | Bambu Lab AMS 2 Pro - AMS 1 | Bambu Lab AMS 2 Pro - AMS 2 |
+| Manufacturer | Bambu Lab | Bambu Lab |
+| Model | AMS 2 Pro | AMS 2 Pro |
+| Exact serial | `19C06A522002297` | `19C51A620400EWR` |
+| Bambu Studio designation | A | B |
 | Type / subtype | AMS Unit / Bambu AMS | AMS Unit / Bambu AMS |
-| Manufacturer / model | Bambu Lab / AMS 2 Pro | Bambu Lab / AMS 2 Pro |
-| Reported manufacturer serial | `19C-06A-522-00-22-97` | `19C-51A-6-204-00 EWR` |
-| THS asset identifier | null | null |
-| Current Registry location | null | null |
 | Lifecycle | Installed | Installed |
-| Operational status | Unknown | Unknown |
-| Installed / commissioned times | null / null | null / null |
-| Retirement / disposal | null | null |
+| Registry operational status | Degraded | Operating |
+| User-facing operational meaning | Operational with restrictions | Operational |
+| Current Registry location | null | null |
+| Installation date | null | null |
 | State version | 1 | 1 |
-| Creator | Cowboy | Cowboy |
 
-The canonical Registry location remains null because production has no
-verified `THS print room` location row. The legacy AMS location hierarchy is
-preserved and is not substituted for that missing physical-area fact.
+AMS 1's serial is confirmed on both the P1S screen and the physical label.
+AMS 2's serial contains no spaces or hyphens, and `EWR` is part of the serial.
 
-Operational status, maintenance readiness, and restrictions remain separate.
-No maintenance bridge is proposed, so readiness remains null and the derived
-restriction remains Unknown.
+`degraded` is the existing Registry enum that truthfully represents AMS 1 as
+operational with restrictions. It does not itself enforce the Slot 2 loading
+restriction.
 
-## Proposed parent/child relationships
+## Parent/child relationships
 
-| Child | Parent | Type | Version | Effective time |
-|---|---|---|---:|---|
-| `THS-EQP-000002` | `THS-EQP-000001` P1S | `attached_to` | 1 | Requires Cowboy confirmation |
-| `THS-EQP-000003` | `THS-EQP-000001` P1S | `attached_to` | 1 | Requires Cowboy confirmation |
+| Child | Parent | Type | Effective time |
+|---|---|---|---|
+| `THS-EQP-000002` | `THS-EQP-000001` | `attached_to` | Actual future onboarding commit time |
+| `THS-EQP-000003` | `THS-EQP-000001` | `attached_to` | Actual future onboarding commit time |
 
-Each relationship creates one current-state row and one immutable attach
-history row. Later movement uses `move` or `detach`; it never rewrites the
-initial history.
+No earlier installation date is invented. Each relationship would create one
+current-state row and one immutable attach-history row. Later moves or
+detachment append history rather than rewriting these events.
 
-## Existing eight slots — adopted, not recreated
+## Legacy-container bridges
 
-Migration 018 intentionally preserved `equipment` and `equipment_slots` as the
-authoritative AMS container and slot structures. Production already has all
-eight required slot records, protected by:
+| Registry equipment | Legacy container | Bridge |
+|---|---:|---|
+| `THS-EQP-000002` | row 1, AMS 1 | one-to-one `equipment_legacy_container_links` insert |
+| `THS-EQP-000003` | row 2, AMS 2 | one-to-one `equipment_legacy_container_links` insert |
 
-- `UNIQUE(equipment_id, slot_number)`;
-- unique slot-location IDs;
-- one active spool per slot;
-- one active slot per spool.
+These bridges adopt the existing eight slot rows. They do not create,
+renumber, delete, or rewrite slots.
 
-Creating eight additional slots would duplicate authoritative state. The
-correct Equipment Registry action is one one-to-one
-`equipment_legacy_container_links` row per new AMS record.
+## Stored assignments versus confirmed physical truth
 
-| Registry AMS | Legacy container | Existing slot ID | Number | Current assignment |
-|---|---|---:|---:|---|
-| `THS-EQP-000002` | AMS 1, row 1 | 1 | 1 | Assignment 8 — `THS-FIL-000040`, purple |
-| `THS-EQP-000002` | AMS 1, row 1 | 2 | 2 | Empty |
-| `THS-EQP-000002` | AMS 1, row 1 | 3 | 3 | Assignment 11 — `THS-FIL-000042`, Hot Pink |
-| `THS-EQP-000002` | AMS 1, row 1 | 4 | 4 | Assignment 10 — `THS-FIL-000041`, Cocoa Brown |
-| `THS-EQP-000003` | AMS 2, row 2 | 5 | 1 | Assignment 9 — `THS-FIL-000039`, Black |
-| `THS-EQP-000003` | AMS 2, row 2 | 6 | 2 | Assignment 2 — `THS-FIL-000023`, Orange |
-| `THS-EQP-000003` | AMS 2, row 2 | 7 | 3 | Assignment 5 — `THS-FIL-000033`, cyan |
-| `THS-EQP-000003` | AMS 2, row 2 | 8 | 4 | Assignment 1 — `THS-FIL-000022`, Jade White |
+Exactly seven production slots are occupied. AMS 1 Slot 2/A2 is empty.
 
-No `equipment_slots` or `ams_assignments` row changes. Existing assignment IDs,
-slot IDs, spool IDs, load times, states, and remaining quantities stay exactly
-as recorded.
+| Slot | Stored assignment | Confirmed physical truth | Result |
+|---|---|---|---|
+| AMS 1 Slot 1 / A1 | `THS-FIL-000040`, `purple` | Purple | Match |
+| AMS 1 Slot 2 / A2 | Empty | Empty; unavailable; do not load | Occupancy match |
+| AMS 1 Slot 3 / A3 | `THS-FIL-000042`, Hot Pink | Hot Pink | Match |
+| AMS 1 Slot 4 / A4 | `THS-FIL-000041`, Cocoa Brown | Cocoa Brown | Match |
+| AMS 2 Slot 1 / B1 | `THS-FIL-000039`, Black | Black | Match |
+| AMS 2 Slot 2 / B2 | `THS-FIL-000023`, Orange | Orange | Match |
+| AMS 2 Slot 3 / B3 | `THS-FIL-000033`, `cyan` | Blue | Compatible stored color family |
+| AMS 2 Slot 4 / B4 | `THS-FIL-000022`, `Jade White` | White | Compatible stored color family |
 
-## Before-and-after counts
+The physical shorthand Blue and White does not contradict the stored catalog
+names `cyan` and `Jade White`. Those permanent spool and catalog identities
+remain unchanged as required.
 
-| Table or projection | Before | Proposed after | Change |
-|---|---:|---:|---:|
-| `equipment_registry` | 1 | 3 | +2 |
-| `equipment_history` | 1 | 3 | +2 |
-| `equipment_relationship_state` | 0 | 2 | +2 |
-| `equipment_relationship_history` | 0 | 2 | +2 |
-| `equipment_legacy_container_links` | 0 | 2 | +2 |
-| Equipment Registry audit events | 1 | 7 | +6 |
-| `equipment_slots` | 8 | 8 | 0 |
-| All `ams_assignments` | 11 | 11 | 0 |
-| Active `ams_assignments` | 7 | 7 | 0 |
-| Equipment telemetry rows | 0 | 0 | 0 |
+Assignment IDs, spool identities, catalog identities, color text, load times,
+states, weights, quantities, inventory transactions, transaction lines, and
+audit history remain untouched.
 
-## Exact proposed write set
+## AMS 1 maintenance truth
 
-The future atomic commit would create 16 rows and update or delete none.
+Confirmed Slot 2 facts:
 
-For each AMS:
+- the slot becomes loud and can lock up;
+- its feeder/roller mechanism requires inspection and repair;
+- it is Out of service / Do not load;
+- it must reject future filament loading.
 
-1. `equipment_registry`: one permanent equipment record.
-2. `equipment_history`: one immutable `register` event, state null to 1.
-3. `audit_events`: one `register_equipment` event.
-4. `equipment_relationship_state`: one current `attached_to` projection.
-5. `equipment_relationship_history`: one immutable `attach` event.
-6. `audit_events`: one `attach_equipment_relationship` event.
-7. `equipment_legacy_container_links`: one one-to-one bridge to legacy AMS 1
-   or AMS 2.
-8. `audit_events`: one `link_legacy_equipment_container` event.
+Confirmed Slot 4 facts:
 
-Generated UUIDs, request nonces, row IDs, snapshots, and system commit
-timestamps must be bound into a new signed review after physical confirmation.
-They are intentionally not invented in this zero-write report.
+- it has historically rewound faster than the spool;
+- it is currently loaded with Cocoa Brown and functioning;
+- it requires a monitoring note;
+- it must not be marked out of service without new evidence.
 
-No capabilities, interfaces, connections, telemetry, maintenance links,
-purchase links, receipt links, component installations, printer links, slot
-rows, filament transactions, or assignment changes are proposed.
+Confirmed equipment-level readiness:
 
-## Duplicate and stale-state protection
+- AMS 1: Needs service;
+- AMS 2: Unknown until formally inspected.
 
-Before a future commit:
+## Current schema conflict
 
-- both permanent numbers must still be next in sequence;
-- serials are compared after case and whitespace normalization;
-- the database unique index additionally protects manufacturer plus
-  `lower(trim(manufacturer_serial_number))`;
-- display names are normalized and protected by a unique index;
-- each legacy container may have only one Registry link;
-- each Registry equipment row may have only one legacy-container link;
-- each legacy AMS must still have exactly unique slots 1–4;
-- active-slot and active-spool uniqueness must remain valid;
-- the P1S and both legacy containers must match the signed snapshot;
-- request nonces, signatures, age, replay, sequence, and relationship-cycle
-  checks must pass.
+Production already contains legacy maintenance assets:
 
-Any mismatch must roll back the whole transaction.
+| Asset | ID | Current readiness |
+|---|---:|---|
+| AMS 1 | 2 | Normal |
+| AMS 2 | 3 | Normal |
 
-## Audit and immutable history
+Linking these assets now would falsely project Normal for both new Registry
+records. Existing readiness values are limited to:
 
-Expected per-unit audit sequence:
+- Normal;
+- Monitor during printing;
+- No unattended printing;
+- Out of service.
 
-1. register equipment;
-2. attach equipment relationship;
-3. link legacy equipment container.
+There is no `Needs service` or `Unknown` value. The readiness is asset-wide,
+so setting AMS 1 to Out of service would incorrectly disable usable Slots 1,
+3, and 4.
 
-Registration snapshots preserve the serial, model, lifecycle, operational
-status, and permanent identity. Relationship snapshots preserve the P1S
-parent, `attached_to` type, state version, actor, reason, and confirmed
-effective time.
+Schema 19 also has no slot-level operational-state, restriction, monitoring,
+or immutable restriction-history structure. Notes alone would not enforce
+`Do not load`, so storing only prose would be unsafe.
 
-## Rollback and post-onboarding verification plan
+The complete write set therefore cannot yet include a truthful Slot 2
+restriction or maintenance-readiness record. No row count is invented for
+tables that do not exist.
 
-Before any authorized write:
+## Required future schema/service design
 
-1. stop and verify the production service;
-2. recheck exact schema, checksum, integrity, foreign keys, sequence, parent,
-   legacy units, slots, assignments, and serial/name duplicates;
-3. create and hash-verify a fresh external schema-19 backup;
-4. create a fresh signed preview containing the physically confirmed facts;
-5. rehearse the exact atomic commit on a verified production copy;
-6. require explicit production authorization.
+A separately authorized source/schema checkpoint must provide:
 
-The production commit must be one transaction. Any failed registration,
-relationship, bridge, or audit insert rolls back every child action.
+### Slot 2 current state and history
 
-Post-onboarding:
+- slot ID 2 / A2;
+- operational state `out_of_service`;
+- restriction `do_not_load`;
+- required reason and actor;
+- state version and effective time;
+- immutable history;
+- service-layer validation that rejects every load or replacement targeting
+  the restricted slot;
+- atomic stale-state, duplicate, tamper, and replay protection.
 
-- verify exactly three Registry equipment records;
-- verify `THS-EQP-000002` and `THS-EQP-000003` identities and serials;
-- verify two current P1S child relationships and two immutable attach histories;
-- verify two one-to-one legacy links;
-- verify the same eight slot rows and seven active assignment rows;
-- fingerprint all filament, transaction, slot, and assignment tables;
-- verify zero telemetry and no new provenance or maintenance links;
-- run integrity, foreign keys, focused tests, full regression, and HTTP routes.
+### Slot 4 monitoring state and history
 
-For immediate authorized rollback before any later production activity, restore
-the verified pre-onboarding backup. For later correction, do not delete
-permanent equipment or rewrite history; use separately approved corrective
-state and relationship workflows.
+- slot ID 4 / A4;
+- operational state remains operational;
+- monitoring note for the rewind behavior;
+- no load restriction;
+- immutable history and audit.
 
-## Required Cowboy confirmations
+### Equipment maintenance readiness
 
-1. Does the AMS 1 label read exactly `19C-06A-522-00-22-97`?
-2. Does the AMS 2 label read exactly `19C-51A-6-204-00 EWR`, including the
-   space and `EWR` suffix?
-3. Which physical serial maps to the legacy `AMS 1` and `AMS 2` names?
-4. Approve the exact display names:
-   - `Bambu Lab AMS 2 Pro - AMS 1`
-   - `Bambu Lab AMS 2 Pro - AMS 2`
-5. Confirm both physical units are currently attached to the P1S.
-6. Confirm each physical unit's slots are numbered 1–4 consistently with the
-   existing legacy slot mapping.
-7. Confirm the model label is exactly `AMS 2 Pro`.
-8. Provide or approve an effective attachment time for immutable history.
-9. Confirm lifecycle `Installed`, operational status `Unknown`, readiness null,
-   and restriction Unknown are truthful.
+- AMS 1 `needs_service`;
+- AMS 2 `unknown`;
+- no conversion to misleading legacy readiness values;
+- separate projection from operational status and derived restrictions.
 
-## Implementation boundary before a future write
+### Atomic onboarding orchestrator
 
-The current Equipment Registry service signs individual registration and
-relationship operations, but it does not yet provide one atomic two-unit
-registration/relationship/legacy-bridge commit. The next authorized source
-checkpoint should add that narrow orchestrator and its rollback tests. Direct
-production SQL is not approved.
+One signed commit must bind:
 
-Stop for Cowboy's physical confirmation and explicit authorization.
+- P1S fact update;
+- both AMS registrations;
+- both parent relationships;
+- both legacy bridges;
+- equipment-level readiness;
+- Slot 2 restriction;
+- Slot 4 monitoring note;
+- maintenance record and all audit/history rows.
+
+Direct production SQL is not approved.
+
+## Revised currently representable write set
+
+Under the existing schema, the non-maintenance portion contains:
+
+- **18 inserted rows**;
+- **1 updated row**;
+- **0 deleted rows**;
+- **0 slot rows created or changed**;
+- **0 assignment rows changed**.
+
+The 18 currently representable inserts are:
+
+| Table | Count | Purpose |
+|---|---:|---|
+| `equipment_registry` | 2 | AMS 1 and AMS 2 permanent records |
+| `equipment_history` | 3 | Two registrations plus P1S fact update |
+| `equipment_relationship_state` | 2 | Current P1S child relationships |
+| `equipment_relationship_history` | 2 | Immutable attach events |
+| `equipment_legacy_container_links` | 2 | Registry-to-legacy bridges |
+| `audit_events` | 7 | P1S update plus three events per AMS |
+| **Total** | **18** | |
+
+The one currently representable update is:
+
+- `equipment_registry` row 1 / `THS-EQP-000001`:
+  `manufacturer_serial_number` null to `01P00C511401400`,
+  `state_version` 1 to 2, and `updated_at` to commit time.
+
+The complete required inserted-row count is intentionally **not finalized**
+until the slot-restriction and readiness schema is approved. Claiming a final
+count now would omit required safety records or invent nonexistent tables.
+
+## Expected audit records
+
+Current-schema portion:
+
+1. `THS-EQP-000001` — `update_equipment_facts`;
+2. `THS-EQP-000002` — `register_equipment`;
+3. `THS-EQP-000002` — `attach_equipment_relationship`;
+4. `THS-EQP-000002` — `link_legacy_equipment_container`;
+5. `THS-EQP-000003` — `register_equipment`;
+6. `THS-EQP-000003` — `attach_equipment_relationship`;
+7. `THS-EQP-000003` — `link_legacy_equipment_container`.
+
+The later schema checkpoint must add explicit restriction, monitoring,
+maintenance-readiness, and maintenance-record audit events.
+
+## Duplicate and stale-state protections
+
+A future commit must reject:
+
+- permanent IDs other than the still-next `THS-EQP-000002` and
+  `THS-EQP-000003`;
+- any existing or concurrently created equipment using those IDs;
+- duplicate P1S or AMS serials after case/whitespace normalization;
+- display-name duplicates;
+- duplicate current child relationships;
+- self-parenting and relationship cycles;
+- duplicate Registry-to-legacy-container bridges;
+- anything other than unique slot numbers 1–4 per legacy AMS;
+- any duplicate active spool in a slot or duplicate active slot for a spool;
+- any load into restricted Slot 2/A2;
+- stale P1S, AMS, maintenance, slot, assignment, or sequence snapshots;
+- expired, tampered, replayed, or reused previews.
+
+Database uniqueness remains the final defense, while service validation must
+produce friendly errors before commit.
+
+## Atomic transaction and rollback
+
+The final production write must use one transaction. If any P1S update, AMS
+registration, relationship, bridge, readiness, restriction, maintenance,
+history, or audit action fails, every child action rolls back.
+
+Before future production authorization:
+
+1. resolve the duplicate untracked listener under separate authorization;
+2. reverify branch, source commit, schema, checksum, integrity, foreign keys,
+   P1S state, next equipment IDs, legacy containers, slots, assignments, and
+   maintenance assets;
+3. create and hash-verify a fresh external backup;
+4. build a fresh signed preview using the actual future onboarding time;
+5. rehearse the complete atomic workflow on a verified production copy;
+6. fingerprint every protected equipment, slot, assignment, inventory,
+   transaction, maintenance, and audit table;
+7. obtain explicit production authorization.
+
+For immediate rollback before later activity, stop the verified application
+and restore the verified backup. For later corrections, permanent IDs and
+immutable history must remain; use controlled fact, relationship, restriction,
+and maintenance transitions.
+
+## Before-and-after validation plan
+
+After a later authorized commit:
+
+- Registry equipment count must be exactly 3;
+- `THS-EQP-000001` must contain the confirmed P1S serial and state version 2;
+- `THS-EQP-000002` and `THS-EQP-000003` must match exact names, models, and
+  serials;
+- both AMS units must be current `attached_to` children of the P1S;
+- both immutable attach histories and both legacy bridges must exist;
+- AMS 1 must project Degraded / Needs service;
+- AMS 2 must project Operating / Unknown readiness;
+- Slot 2/A2 must be empty, Out of service, and reject loading;
+- Slot 4/A4 must remain loaded and operational with its monitoring note;
+- the same eight slot IDs and seven active assignment IDs must remain;
+- all spool identities, catalog identities, colors, weights, quantities,
+  transactions, and prior audit rows must fingerprint unchanged;
+- telemetry and provenance counts must remain unchanged;
+- integrity, foreign keys, focused tests, full regression, and HTTP routes
+  must pass.
+
+## Boundary
+
+All physical facts are recorded in the revised preview. Production onboarding
+is blocked on a separately approved slot-restriction/readiness schema and
+atomic service checkpoint. Stop for explicit authorization.
