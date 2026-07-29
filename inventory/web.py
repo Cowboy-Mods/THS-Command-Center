@@ -958,7 +958,7 @@ class InventoryWebApp:
         ams_slots = "".join(
             f"""<li class="dashboard-slot"><span>{esc(slot["equipment"])} · Slot {slot["slot_number"]}</span>
             <strong>{esc(slot["permanent_id"] or "Empty")}</strong>
-            {f'<small><i class="color-swatch" style="--swatch:{self._swatch(slot["color"])}"></i>{esc(slot["manufacturer"])} · {esc(slot["color"])} · {grams(slot["remaining_quantity"])}</small>' if slot["permanent_id"] else '<small>Available</small>'}</li>"""
+            {f'<small><i class="color-swatch" style="--swatch:{self._swatch(slot["color"], slot["color_code"])}"></i>{esc(slot["manufacturer"])} · {esc(slot["color"])} · {grams(slot["remaining_quantity"])}</small>' if slot["permanent_id"] else '<small>Available</small>'}</li>"""
             for slot in t["ams_details"]
         )
         pending_orders = (
@@ -1028,16 +1028,35 @@ class InventoryWebApp:
         )
 
     @staticmethod
-    def _swatch(color) -> str:
+    def _swatch(color, color_code=None) -> str:
+        verified_code = str(color_code or "").strip()
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", verified_code):
+            return verified_code.lower()
+
         normalized = " ".join(str(color or "").strip().lower().split())
-        return {
+        swatches = {
             "white": "#f4f4f0", "jade white": "#f4f4f0",
             "orange": "#ff7a18", "red": "#d32f2f", "black": "#24262a",
             "cyan": "#0086d6", "cayenne": "#0086d6",
             "blue": "#2878d0", "cobalt blue": "#2454a6", "brown": "#79533a",
             "gray": "#8a9098", "dark gray": "#4b5057", "pink": "#ef8cab",
             "gold": "#d5a72e", "turquoise": "#27b8b2", "bambu green": "#00ae42",
-        }.get(normalized, "#777d86")
+            "purple": "#800080",
+        }
+        aliases = {"hot pink": "pink", "cocoa brown": "brown"}
+        resolved = swatches.get(aliases.get(normalized, normalized))
+        if resolved:
+            return resolved
+
+        compound = [part.strip() for part in normalized.split("/")]
+        if len(compound) == 2:
+            colors = [swatches.get(aliases.get(part, part)) for part in compound]
+            if all(colors):
+                return (
+                    f"linear-gradient(135deg,{colors[0]} 0 50%,"
+                    f"{colors[1]} 50% 100%)"
+                )
+        return "#777d86"
 
     def _filament_inventory(self, query: dict[str, list[str]]) -> str:
         get = lambda key: query.get(key, [""])[0]

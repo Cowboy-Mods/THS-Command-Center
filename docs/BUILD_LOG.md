@@ -380,3 +380,19 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   `D50AA7C4F437FE7717F04DFF5F34448EB38C209C7BA2C23F8D0B2CB1DB637091`.
 - Focused tests passed: 34. Full regression passed: 321.
 - Dashboard and guided replacement routes returned HTTP 200 with zero writes.
+# 2026-07-29 — Source-only filament swatch repair
+
+- Preserved and repaired the approved failing Purple, Hot Pink, and Cocoa Brown
+  dashboard regression tests.
+- Added verified `color_code` priority, canonical Purple `#800080`, explicit
+  Pink/Brown aliases, recognized slash-compound gradients, and the retained
+  unknown-gray final fallback.
+- Added an end-to-end disposable-database dashboard test proving AMS slot
+  identity, color text, and verified swatch update together.
+- Focused dashboard tests passed: 35. Related inventory workflow tests passed:
+  68. Full regression suite passed: 328.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- No production data or schema changed. Deployment remains blocked pending
+  explicit approval.

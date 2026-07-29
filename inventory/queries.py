@@ -124,13 +124,18 @@ class InventoryQueries:
                 dict(row) for row in db.execute(
                     """SELECT e.name equipment,es.slot_number,ii.permanent_id,
                     m.name manufacturer,ci.product_line,ci.variant color,
-                    ii.remaining_quantity
+                    cc.text_value color_code,ii.remaining_quantity
                     FROM equipment e JOIN equipment_slots es ON es.equipment_id=e.id
                     LEFT JOIN ams_assignments aa
                       ON aa.slot_id=es.id AND aa.unloaded_at IS NULL
                     LEFT JOIN inventory_instances ii ON ii.id=aa.instance_id
                     LEFT JOIN catalog_items ci ON ci.id=ii.catalog_item_id
                     LEFT JOIN manufacturers m ON m.id=ci.manufacturer_id
+                    LEFT JOIN catalog_item_attribute_values cc
+                      ON cc.catalog_item_id=ci.id
+                     AND cc.attribute_definition_id=(
+                       SELECT id FROM attribute_definitions WHERE name='color_code'
+                     )
                     WHERE e.equipment_type='AMS' AND e.archived_at IS NULL
                     ORDER BY e.name,es.slot_number"""
                 )

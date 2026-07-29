@@ -2,6 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from inventory.actions import ActionContext, InventoryActionService
 from inventory.db import connect, migrate
 from inventory.web import InventoryWebApp, create_server
 
@@ -240,6 +241,95 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         for color, value in expected.items():
             with self.subTest(color=color):
                 self.assertEqual(self.app._swatch(color), value)
+
+    def test_26_purple_swatch_does_not_use_unknown_color_fallback(self):
+        self.assertEqual(
+            self.app._swatch("purple"),
+            "#800080",
+            "Production Purple must use its canonical swatch.",
+        )
+
+    def test_27_hot_pink_alias_uses_the_registered_pink_swatch(self):
+        self.assertEqual(
+            self.app._swatch("Hot Pink"),
+            self.app._swatch("Pink"),
+            "Hot Pink must normalize to the supported Pink swatch family.",
+        )
+
+    def test_28_cocoa_brown_alias_uses_the_registered_brown_swatch(self):
+        self.assertEqual(
+            self.app._swatch("Cocoa Brown"),
+            self.app._swatch("Brown"),
+            "Cocoa Brown must normalize to the supported Brown swatch family.",
+        )
+
+    def test_29_verified_color_code_precedes_name_alias_and_invalid_code_falls_back(self):
+        self.assertEqual(self.app._swatch("Hot Pink", "#A1B2C3"), "#a1b2c3")
+        self.assertEqual(
+            self.app._swatch("Hot Pink", "not-a-verified-hex-code"),
+            self.app._swatch("Pink"),
+        )
+
+    def test_30_compound_color_uses_an_intentional_two_color_swatch(self):
+        self.assertEqual(
+            self.app._swatch(" Black / Purple "),
+            "linear-gradient(135deg,#24262a 0 50%,#800080 50% 100%)",
+        )
+        self.assertNotEqual(self.app._swatch("Black/Purple"), "#777d86")
+
+    def test_31_genuinely_unknown_color_keeps_the_unknown_gray_fallback(self):
+        self.assertEqual(self.app._swatch("Maker Mystery Sparkle"), "#777d86")
+
+    def test_32_dashboard_updates_slot_identity_color_text_and_verified_swatch_together(self):
+        db = connect(self.database)
+        try:
+            spool = db.execute(
+                """SELECT ii.id,ii.permanent_id,ii.catalog_item_id
+                FROM inventory_instances ii
+                WHERE ii.state='sealed' ORDER BY ii.id LIMIT 1"""
+            ).fetchone()
+            slot = db.execute(
+                """SELECT es.id,e.name,es.slot_number
+                FROM equipment_slots es JOIN equipment e ON e.id=es.equipment_id
+                ORDER BY e.name,es.slot_number LIMIT 1"""
+            ).fetchone()
+            db.execute(
+                "UPDATE catalog_items SET variant='Hot Pink' WHERE id=?",
+                (spool["catalog_item_id"],),
+            )
+            db.execute(
+                """UPDATE catalog_item_attribute_values SET text_value='Hot Pink'
+                WHERE catalog_item_id=? AND attribute_definition_id=(
+                  SELECT id FROM attribute_definitions WHERE name='manufacturer_color_name'
+                )""",
+                (spool["catalog_item_id"],),
+            )
+            db.execute(
+                """INSERT INTO catalog_item_attribute_values(
+                  catalog_item_id,attribute_definition_id,text_value
+                ) VALUES (?,(SELECT id FROM attribute_definitions WHERE name='color_code'),?)""",
+                (spool["catalog_item_id"], "#FF1493"),
+            )
+            service = InventoryActionService(
+                db, ActionContext(actor="Dashboard fixture", module="test", origin="system")
+            )
+            service.open_sealed_spool(spool["id"], reason="Dashboard swatch fixture")
+            service.load_instance_into_ams(
+                spool["id"], slot["id"], reason="Dashboard swatch fixture"
+            )
+            db.commit()
+        finally:
+            db.close()
+
+        _, _, page = self.page("/")
+        slot_start = page.index(
+            f"<span>{slot['name']} · Slot {slot['slot_number']}</span>"
+        )
+        slot_end = page.index("</li>", slot_start)
+        rendered_slot = page[slot_start:slot_end]
+        self.assertIn(f"<strong>{spool['permanent_id']}</strong>", rendered_slot)
+        self.assertIn("Hot Pink", rendered_slot)
+        self.assertIn("--swatch:#ff1493", rendered_slot)
 
 
 if __name__ == "__main__":
