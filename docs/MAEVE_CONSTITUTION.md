@@ -38,6 +38,14 @@ Privacy is the default. Local storage and local processing are preferred wheneve
 
 The philosophy remains fixed while presentation may change. Users may customize personality, voice, greetings, startup artwork, workshop name, motto, colors, themes, dashboard cards, and notification behavior. THS branding belongs on official THS installations and Cowboy's personal unit, but it must not be forced on other builders.
 
+### Personal by Design
+
+**One Engine. Your Workshop.**
+
+The operational health engine must remain separate from its presentation so each
+workshop can use standard indicators, traffic signals, industrial stack lights, or
+another suitable profile without changing the underlying safety meaning.
+
 ## Open-source commitment
 
 Maeve is intended to be open source and community-driven. Core formats and module interfaces should be documented so builders can inspect, repair, adapt, and extend their systems. Optional modules must not weaken builder control, privacy, or honest-data rules.
@@ -62,5 +70,6 @@ If the answer to any question is no, reconsider the design before adding it.
 - Interruptions require a genuine reason.
 - Progress and recommendations use trustworthy data.
 - Unknown information stays unknown.
+- Operational restrictions must never appear as an all-clear condition.
 - Personalization never changes the builder-first philosophy.
 - Core and optional modules remain clearly separated.

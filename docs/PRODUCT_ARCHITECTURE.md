@@ -83,3 +83,47 @@ Maeve Core contains the capabilities common to a workshop companion. Personal, s
 - [x] THS branding made optional
 - [x] Core, personal, and work modules separated
 - [x] Raspberry Pi compatibility recorded as a design target
+
+## Roadmap boundaries
+
+### Implemented
+
+- Purchase Registry Phase 1
+- Immutable purchase evidence and controlled maintenance linkage
+- Legacy-order delivery evidence and evidence-backed full-order receiving
+- Date-only receipt semantics and strict outstanding-quantity checks
+- Preview-bound permanent batch, inventory, evidence-link, and history identities
+
+### Operational backlog
+
+- Red can-cover prototype
+- Red full can-cover batch
+- Blue full can-cover batch
+- Golf-ball container scale test
+- Later golf-ball batch only if the scale test is approved
+
+### Version 1 requirement
+
+**Secure Remote Dashboard** must be authenticated, encrypted, and read-only
+first; usable from Cowboy's phone away from home; and must never expose local
+port 8787 publicly. Local self-hosting must remain fully functional.
+
+### Version 1 polish
+
+- Traffic Operations shop-health presentation
+- Customizable Workshop Profiles
+- Standard, traffic-signal, and industrial status presentations
+- Reusable filament-swatch component and aliases
+- Dashboard presentation refinements
+
+### Future work
+
+- Purchase Registry Receiving and Status Transitions
+- Historical purchase backfill with reconciliation before linking old purchases
+  to current inventory
+- Analytics, official Apple clients, and live Bambu integration
+
+Historical Bambu invoices must not automatically create duplicate current
+inventory. Existing AMS units, tools, plates, equipment, and filament must be
+reconciled before historical lines are linked to current inventory. None of the
+future items in this section are claimed as implemented.

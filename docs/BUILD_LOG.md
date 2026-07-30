@@ -1,5 +1,148 @@
 # THS Command Center Build Log
 
+## 2026-07-28 — Flexible spool replacement guided UI
+
+- Expanded the guided replacement form to support outgoing Empty, storage
+  return, or AMS movement and incoming Sealed, Open, or None outcomes.
+- Added explicit storage and AMS source/destination controls, a service-generated
+  zero-write final review, signed version-2 plans, stale-state revalidation, and
+  friendly zero-write failure pages.
+- Preserved version-1 sealed-replacement review and completion compatibility.
+- Added a schema-18 safety gate so the flexible form is unavailable until
+  Migration 019 receives a separate production deployment.
+- Added 12 focused UI tests; wider UI/filament coverage passes 183 tests and the
+  full regression suite passes 318 tests.
+- Made no production schema/data, purple-color, AMS-onboarding, or main-branch
+  changes.
+
+## 2026-07-28 — Flexible spool replacement service layer
+
+- Added the schema-19 `flexibly_replace_active_filament_spool` service contract
+  for empty, storage-return, AMS-move, sealed/open incoming, and no-replacement
+  operations.
+- Validates the complete final AMS layout before writing and permits occupied
+  destinations only when the same atomic transaction vacates them.
+- Links outgoing and incoming child actions to one immutable explicit-disposition
+  parent workflow and rolls back every state, assignment, transaction, and audit
+  record on failure.
+- Preserved the original sealed-only service method and legacy schema-6 column
+  behavior without backfilling or reinterpreting history.
+- Added 11 focused service tests; wider filament/service coverage passes 144
+  tests and the full regression suite passes 306 tests.
+- Made no UI, production database, spool-correction, migration, or main-branch
+  changes.
+
+## 2026-07-28 — Flexible spool replacement schema foundation
+
+- Added schema-only Migration 019 for explicit outgoing and incoming spool
+  dispositions without fake replacement identities.
+- Preserved legacy sealed-replacement columns and existing immutable workflow
+  history while making the legacy replacement and destination fields nullable.
+- Added constrained storage, AMS-slot, sealed, open, and no-replacement shapes.
+- Verified the migration against a disposable production copy: schema 18 to 19,
+  75 protected table fingerprints unchanged, integrity OK, and zero foreign-key
+  violations.
+- Added eight migration/schema tests; focused filament suites pass 133 tests and
+  the complete regression suite passes 295 tests.
+- Kept production at schema 18 and made no spool, equipment, telemetry, UI, or
+  service-layer changes.
+
+## 2026-07-27 — First Equipment Registry onboarding
+
+- Registered Cowboy's Bambu Lab P1S as `THS-EQP-000001` through the signed,
+  zero-write-preview Equipment Registry workflow.
+- Recorded one installed/operating 3D-printer record with verified ownership,
+  purchase date, THS print-room location, Wi-Fi support, AMS support, and notes.
+- Kept unknown serial, THS asset identifier, and exact installation/
+  commissioning timestamps null.
+- Recorded the built-in camera only as a supported embedded capability/component.
+- Created one immutable equipment-history row and one general audit event.
+- Created no AMS, camera equipment, telemetry, relationship, interface,
+  connection, purchase, receipt, inventory, or assignment records.
+
+## 2026-07-27 — Equipment Registry v1 source foundation
+
+- Added additive Migration 018 with permanent `THS-EQP` identity, controlled
+  types/subtypes, stable equipment facts, embedded capabilities, normalized
+  interfaces/connections, provenance bridges, and immutable histories.
+- Preserved the legacy AMS `equipment` and `equipment_slots` structures.
+- Added signed, expiring, zero-write registration and relationship previews with
+  preview-bound identities, stale/tamper/replay/duplicate/sequence protection,
+  atomic commits, and audit events.
+- Kept operational status, maintenance readiness, derived restrictions, stable
+  capabilities, and freshness-aware telemetry as separate concepts.
+- Added future Bambu, camera-viewing, and print-correlation protocol seams
+  without device communication or stream handling.
+- Added read-only equipment list/detail/relationship/connection projections and
+  focused temporary-database tests.
+- Created no equipment or telemetry rows and did not apply Migration 018 to
+  production.
+
+## 2026-07-27 — Purchase Registry Receiving source checkpoint
+
+- Added additive migration 017 for controlled fulfillment state, immutable
+  receipts, line-specific receiving, evidence links, inventory links, and
+  derived outstanding quantities.
+- Added signed, expiring, zero-write status and receipt previews with permanent
+  identities, evidence revalidation, stale-state checks, replay protection,
+  sequence protection, and atomic rollback.
+- Added separate individual, quantity, lot, and non-inventory receiving
+  behavior through the Inventory Action Service.
+- Recorded the design rule that receiving means verified physical arrival only
+  and never implies installation, opening, assignment, loading, usage, or
+  consumption.
+- Kept `THS-PO-000001` and production inventory untouched during source
+  development.
+
+## 2026-07-26 — Stage 2 Maintenance Registry production checkpoint
+
+### Maintenance Registry completed
+
+- Added permanent maintenance IDs, equipment readiness, backlog views, linked print
+  records, SHA-256 photo/video evidence, replay protection, and immutable lifecycle
+  history.
+- Added controlled workflows for recording faults, creating tasks, waiting for parts,
+  completing work, verifying repairs, and reopening failed repairs.
+- Added explicit Pending and In progress initial states to Record Fault Discovered.
+- Applied migration `012_maintenance_registry.sql` to the live runtime database after a
+  verified timestamped backup. Existing inventory, AMS, transaction, audit, print, and
+  open-spool registration content remained unchanged.
+
+### First signed production maintenance record
+
+- Committed `THS-MNT-000001` for the Bambu Lab P1S purge-chute sweeper failure.
+- Linked the fault to `THS-PRT-000001`, the Tweety orange-hat print accepted with defect.
+- Recorded the corrected diagnosis: the sliding purge-chute sweeper detached; the nozzle
+  wiper was initially suspected but was not the failed part.
+- Recorded the temporary sweeper reattachment, ordered replacement purge chute, spare
+  nozzle wiper, and No unattended printing readiness.
+- Registered the original Bambu Lab order screenshot as immutable evidence ID `1` using
+  SHA-256, without transcribing its shipping address or phone number into maintenance
+  notes.
+- Verified database integrity and confirmed maintenance history and evidence cannot be
+  silently updated or deleted.
+
+### Dashboard and launcher hardening
+
+- Added canonical AMS swatches for Red (`#d32f2f`) and Jade White (`#f4f4f0`) while
+  preserving Black (`#24262a`) and Orange (`#ff7a18`).
+- Found an untracked older THS process occupying port 8787 and causing current launcher
+  checks to accept stale pages.
+- Added an isolated checkout-relative Python bootstrap, exact application-path
+  verification, startup path diagnostics, occupied-port rejection, and listener-PID
+  verification.
+- Verified the permanent launcher serves the current dashboard, maintenance workflow,
+  and AMS routes from the permanent Git checkout.
+
+### Verified checkpoint
+
+- Source branch: `feature/filament-manager-v1`
+- Maintenance Registry implementation: `36e4e87`
+- Maintenance/launcher/swatch hardening: `a6a3f15`
+- Full suite: 199 tests passing
+- Live runtime data, backups, process records, screenshots, and immutable evidence remain
+  outside Git.
+
 ## 2026-07-12 — Maeve Briefing System v1.0
 
 ### Project context
@@ -56,3 +199,349 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Add Apple Watch battery reporting if available through Shortcuts.
 - Add low-battery charging reminders.
 - Continue integrating Maeve with the THS Command Center, Home Assistant, room monitor, and Get Home workflow.
+
+## 2026-07-26 — Purchase Registry Foundation Phase 1
+
+- Preserved the legacy `orders` and receiving workflow without converting
+  `THS-ORD-000001`.
+- Added additive migration `013_purchase_registry_foundation.sql` for vendors,
+  extensible categories, permanent `THS-PO-######` purchases, immutable lines, and
+  immutable signed history.
+- Added integer-cent monetary validation, signed expiring zero-write previews,
+  explicit confirmation, atomic commits, stale-state checks, and nonce replay
+  protection.
+- Added read-only purchase verification queries and a purchase-specific migration
+  dry run that fingerprints protected operational tables.
+- Kept evidence, receiving, inventory integration, maintenance linkage, dashboards,
+  analytics, cost accounting, and reorder logic out of Phase 1.
+
+## 2026-07-26 — Dashboard Shop-Health Correction
+
+- Separated operational shop-health evaluation from its visual presentation.
+- Equipment readiness now prevents a false all-clear whenever a non-normal
+  operational restriction exists.
+- Added Shop Ready, Attention Required, and Operation Restricted traffic-signal
+  presentation with linked maintenance details.
+- Added the Personal by Design, One Engine. Your Workshop., and honest operational
+  restriction principles to the tracked Maeve design philosophy.
+
+## 2026-07-26 — Purchase Registry Phase 2A
+
+- Added signed, expiring, zero-write previews for immutable purchase evidence and
+  controlled maintenance linkage.
+- Kept purchase evidence, delivery evidence, inventory receipt, maintenance
+  relevance, and actual installation or consumption as separate facts.
+- Added SHA-256 and file-size revalidation, explicit confirmation, replay
+  protection, immutable history, and atomic rollback.
+- Added migration 014 dry-run protection for all legacy and Phase 1 purchase data.
+- Did not create the Bambu purchase, process the Overture receipt, or migrate
+  production.
+
+## 2026-07-26 — Cyan/Cayenne AMS swatch correction
+
+- Added the canonical Bambu PLA Basic Cyan swatch (`#0086d6`) and accepted
+  `Cayenne` as the shop-facing alias for the same registered color.
+- Normalized swatch lookup case and surrounding/repeated whitespace while
+  preserving the unknown-color fallback.
+- Made no inventory or production database changes.
+
+## 2026-07-26 — Phase 2A signed UUID hardening
+
+- Moved proposed purchase-evidence and maintenance-link UUID generation into
+  the signed preview payload.
+- Commits now use the exact reviewed UUIDs, preventing identity changes between
+  preview and confirmation.
+
+## 2026-07-26 — Legacy order delivery evidence source checkpoint
+
+- Added migration 015 with immutable delivery evidence and history for legacy
+  `THS-ORD-*` records.
+- Added signed, expiring, zero-write previews with previewed UUIDs, immediate
+  commit-time SHA-256 revalidation, replay protection, and atomic history.
+- Added privacy screening and a read-only delivery-evidence section on legacy
+  order details.
+- Kept delivery proof separate from receipt, inventory, installation, and
+  consumption. No production evidence or receiving data was written.
+
+## 2026-07-26 — Legacy order receiving hardening
+
+- Added additive migration `016_legacy_order_receiving_hardening.sql` with
+  separate physical receipt facts and system-recorded commit time.
+- Added signed, expiring, audited in-place catalog correction with immutable
+  history and a refill-coil form attribute.
+- Added immutable same-order batch/evidence links with commit-time external-file
+  SHA-256 and size revalidation.
+- Enforced exact full-outstanding receiving; partial receipt remains a separate
+  future workflow.
+- Bound the batch UUID, THS-FIL IDs, evidence snapshots, and link UUIDs into the
+  zero-write signed preview and atomic commit.
+- Made no production database, catalog, order, evidence, or inventory changes.
+
+## 2026-07-26 — Catalog identity correction integrity hardening
+
+- Bound exact dependent-order records and supporting legacy delivery evidence
+  into signed catalog-correction previews.
+- Added preview-time and commit-time external evidence SHA-256 and size
+  revalidation.
+- Restricted the controlled filament-form value to canonical `Refill coil`
+  with safe whitespace and case normalization.
+- Added explicit normalized catalog-identity conflict checks during preview and
+  commit.
+- Preserved preview-bound history UUID, atomic rollback, stale-state, tamper,
+  expiration, and replay protections without requiring another migration.
+- Made no production catalog, order, evidence, receiving, or inventory changes
+  during source development.
+
+## 2026-07-26 — Completed Overture receiving lifecycle
+
+- Completed Purchase Registry Phase 1, immutable purchase evidence, and
+  maintenance linkage while keeping purchase, delivery, receipt, installation,
+  and consumption as separate facts.
+- Registered immutable legacy delivery evidence, corrected catalog item 18 in
+  place to Overture High Speed PLA White refill coil, and preserved its signed
+  order and evidence dependencies.
+- Received `THS-ORD-000001` as one evidence-backed atomic batch with date-only
+  receipt semantics and strict full-outstanding quantity enforcement.
+- Created sealed refill records `THS-FIL-000034` through `THS-FIL-000037` at
+  Sealed Filament Rack without AMS, RFID, reusable-spool, or consumption state.
+- Preserved preview-bound batch, filament, evidence-link, nonce, and immutable
+  audit identities through commit.
+- Production remains intentionally unchanged for `THS-PO-000001` (Ordered) and
+  `THS-MNT-000001` (In progress, No unattended printing).
+# 2026-07-28 — THS-FIL-000032 / THS-FIL-000039 zero-write correction preview
+
+- Added a reusable read-only correction-preview generator for the flexible
+  schema-19 service workflow.
+- Inspected production schema 18 with immutable/query-only SQLite access.
+- Documented the two spool records, AMS assignments, relevant immutable
+  history, exact proposed row changes, confirmation questions, preconditions,
+  rollback, and post-correction verification.
+- Focused correction/service/UI tests passed: 26.
+- Full regression suite passed: 321.
+- Production SHA-256 remained
+  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`;
+  schema remained 18, integrity was `ok`, and foreign-key violations were zero.
+- Production Migration 019 and the spool correction were not applied.
+# 2026-07-28 — Migration 019 production deployment readiness
+
+- Captured Cowboy's physical confirmations for the later 032/039 correction.
+- Reverified production read-only at schema 18 with integrity `ok`, zero
+  foreign-key violations, and SHA-256
+  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`.
+- Created and verified a byte-matched external rollback backup.
+- Rehearsed only Migration 019 on a verified production copy: candidate reached
+  schema 19; all 75 protected table fingerprints and both target spools remained
+  unchanged.
+- Rehearsed restoration from the external backup and recovered the exact
+  schema-18 baseline hash.
+- Documented the exact deployment, validation, stale-state stop, and rollback
+  procedures. Production deployment and the spool correction remain blocked
+  pending separate explicit authorization.
+- Focused Migration 019/service/UI/correction-preview tests passed: 34.
+- Full regression suite passed: 321.
+# 2026-07-28 — Migration 019 production deployment and validation
+
+- Reverified the exact readiness SHA-256, schema 18, clean integrity/foreign
+  keys, repository state, sole pending migration, and byte-matched external
+  rollback backup before opening production for write.
+- Applied only `019_flexible_spool_replacement.sql`; production advanced
+  exactly 18 to 19.
+- Production after SHA-256:
+  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`.
+- All 75 protected content fingerprints, both target spools, equipment,
+  telemetry, and workflow row counts remained unchanged.
+- Post-deployment integrity and quick checks were `ok`; foreign-key violations
+  remained zero.
+- Focused Migration 019/service/UI/preview tests passed: 34.
+- Full regression suite passed: 321.
+- Dashboard and guided replacement routes returned HTTP 200 with schema-19
+  controls enabled and zero database writes.
+- The physically approved 032/039 correction remains unapplied pending its
+  separate audited correction checkpoint.
+# 2026-07-28 — Verified 032/039 production spool correction
+
+- Reverified production schema 19, required SHA-256, integrity, foreign keys,
+  repository state, both backups, and the exact pre-correction assignments.
+- Created a fresh byte-matched schema-19 backup immediately before the write.
+- Ran the real flexible-service preview inside a rolled-back transaction and
+  proved zero production writes.
+- Applied the exact three-action correction atomically through the schema-19
+  service workflow.
+- Created workflow 1; transactions/lines 23–25; actions 40–42; closed
+  assignments 4 and 7; and created active assignment 9.
+- Production now records 32 Open at Open-Spool Wall, 39 Loaded in AMS 2 Slot 1,
+  and AMS 1 Slot 4 empty.
+- Permanent IDs, catalog/product/color/notes, and all quantities were preserved.
+- All 69 unrelated protected table fingerprints remained unchanged; integrity
+  remained `ok` and foreign-key violations remained zero.
+- Production SHA-256 changed only for the authorized correction from
+  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`
+  to
+  `D50AA7C4F437FE7717F04DFF5F34448EB38C209C7BA2C23F8D0B2CB1DB637091`.
+- Focused tests passed: 34. Full regression passed: 321.
+- Dashboard and guided replacement routes returned HTTP 200 with zero writes.
+# 2026-07-29 — Source-only filament swatch repair
+
+- Preserved and repaired the approved failing Purple, Hot Pink, and Cocoa Brown
+  dashboard regression tests.
+- Added verified `color_code` priority, canonical Purple `#800080`, explicit
+  Pink/Brown aliases, recognized slash-compound gradients, and the retained
+  unknown-gray final fallback.
+- Added an end-to-end disposable-database dashboard test proving AMS slot
+  identity, color text, and verified swatch update together.
+- Focused dashboard tests passed: 35. Related inventory workflow tests passed:
+  68. Full regression suite passed: 328.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
+- No production data or schema changed. Deployment remains blocked pending
+  explicit approval.
+# 2026-07-29 — Filament swatch production deployment
+
+- Reverified and stopped only the separately authorized untracked PID 15960;
+  the verified production PID 37188 remained undisturbed during listener
+  cleanup.
+- Reran every deployment gate against source commit
+  `8ea3c5c58a7d366a32215065303f1d9e053e2b76`.
+- Restarted only the verified dashboard server as PID 58064 using the explicit
+  production database and deliberately skipped the migration command.
+- Live dashboard validation confirmed Purple `#800080`, Hot Pink `#ef8cab`,
+  Cocoa Brown `#79533a`, and the intentional Black/Purple two-color gradient.
+- Dashboard and guided replacement routes returned HTTP 200 with zero database
+  writes.
+- Focused dashboard tests passed: 35. Full regression suite passed: 328.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- Main and all protected production records remained untouched.
+# 2026-07-29 — AMS 2 Pro zero-write onboarding preview
+
+- Added a read-only Equipment Registry preview for two reported Bambu Lab
+  AMS 2 Pro units.
+- Proposed permanent identities `THS-EQP-000002` and `THS-EQP-000003` while
+  preserving the reported serial strings exactly for physical-label review.
+- Confirmed the eight authoritative legacy slot rows already exist; proposed
+  one-to-one Registry bridges instead of duplicate slot creation.
+- Proved all seven active filament assignments, spool identities, quantities,
+  transactions, and slot rows remain unchanged.
+- Documented the exact 16-row future insert set, immutable relationship
+  history, audit events, duplicate protections, rollback, and confirmation
+  questions.
+- Focused equipment/inventory suites passed: 115. Full regression passed: 335.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- No production write, schema change, telemetry work, health-module work,
+  equipment onboarding, or Main change occurred.
+# 2026-07-29 — Physically confirmed AMS preview revision
+
+- Replaced the reported AMS serials with confirmed exact values
+  `19C06A522002297` and `19C51A620400EWR`; added confirmed P1S serial
+  `01P00C511401400`.
+- Confirmed the seven stored slot assignments match physical occupancy.
+  Stored `cyan` and `Jade White` remain unchanged as compatible product names
+  for physical Blue and White.
+- Revised operational states to Degraded for AMS 1 and Operating for AMS 2.
+- Added the confirmed Slot 2 Out-of-service / Do-not-load requirement and Slot
+  4 monitoring fact to the preview.
+- Identified a schema-19 blocker: there is no enforceable slot restriction
+  state, and maintenance readiness cannot represent Needs service or Unknown.
+- Revised the currently representable proposal to 18 inserts, one P1S fact
+  update, zero deletes, and zero slot/assignment changes. The complete count is
+  intentionally deferred until the required schema is approved.
+- Revised focused equipment/inventory suites passed: 116. Full regression
+  passed: 336.
+- Both port-8787 listeners were reinspected read-only and left untouched.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+# 2026-07-29 — AMS Slot 2 maintenance clarification
+
+- Kept Slot 2/A2 as an existing slot under `THS-EQP-000002`; no independent
+  equipment or new slot model is proposed.
+- Scoped proposed `THS-MNT-000002` to affected component Slot 2/A2, including
+  the Do-not-load restriction, symptoms, and repair/function-test requirement.
+- Kept AMS 1 operational with restrictions using Degraded equipment status and
+  Monitor-during-printing readiness; Slots 1, 3, and 4 remain available.
+- Kept Slot 4/A4 in service and placed its historical rewind behavior only in
+  the maintenance monitoring note.
+- Revised the proposed write set to 21 inserts, two updates, zero deletes, zero
+  slot changes, and zero assignment changes.
+- Focused equipment/inventory/maintenance suites passed: 133. Full regression
+  passed: 337.
+- No migration is proposed. Production remains blocked only on a narrow atomic
+  onboarding service checkpoint and explicit authorization.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
+# 2026-07-29 - AMS Slot 2 feeder candidate preview
+
+- Preserved AMS 1 as Installed / Operational with restrictions and its
+  equipment-level readiness as Needs service; A2 remains an existing empty
+  slot with an Out-of-service / Do-not-load restriction.
+- Reinspected production read-only for Bambu Lab AMS 2 Pro Feeder Unit,
+  model `SA403-V1`, UPC `6937285503237`; no catalog, inventory, lot, or
+  purchase-line match exists.
+- Added one proposed `THS-PART-000001` new/boxed candidate part. It remains
+  uninstalled, unreserved, unissued, and unconsumed.
+- Production has no `THS Bambu Maintenance Cabinet` location. No location row
+  is proposed; physical storage confirmation remains required.
+- Regenerated the zero-write plan from 21 to 29 inserts, with 2 updates,
+  0 deletes, 0 slot changes, and 0 filament-assignment changes.
+- Added duplicate-part, part-state, and no-invented-location preview coverage.
+- Focused equipment/inventory/AMS/maintenance/replacement suites passed: 135.
+  Full regression passed: 339.
+- Production remained schema 19 with integrity `ok`, zero foreign-key
+  violations, and unchanged SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
+# 2026-07-30 - Atomic AMS onboarding service
+
+- Implemented a dedicated source-only `AMSOnboardingService` for the approved
+  29-insert, 2-update, 0-delete plan.
+- Added a zero-write default CLI preview and explicit commit gate requiring
+  `APPLY-AMS-ONBOARDING-29-2-0`.
+- Restricted existing-row updates to P1S Registry row 1 and maintenance asset
+  row 2 with exact stale-state predicates.
+- Added duplicate/replay protection for equipment, serials, relationships,
+  bridges, maintenance identity, and feeder permanent/model/UPC identity.
+- Added per-write failure injection and proved rollback after each of the 31
+  child writes plus a postcondition failure.
+- Rehearsed against disposable byte copies of production. Every rollback copy
+  restored SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`;
+  the successful candidate produced 29/2/0, integrity `ok`, and zero foreign
+  key violations.
+- Dedicated service/command tests passed: 11. Focused suites passed: 123.
+  Full regression passed: 350.
+- Production, schema, runtime service, physical repair, feeder state, health
+  data, and Main remained untouched.
+
+# 2026-07-30 - AMS production onboarding
+
+- Reverified the sole port-8787 listener from live process state as the
+  isolated production bootstrap with the explicit external database path.
+- Verified clean synchronized source commit
+  `5461fe83346fb785fcca5933f9a875bc2717b4c7`, schema 19, integrity `ok`,
+  zero foreign-key violations, and pre-onboarding SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- Created and verified the byte-identical external rollback backup at
+  `C:\Users\Cowboy\Documents\THS-Command-Center-Data\backups\ams-onboarding\inventory-schema19-pre-ams-onboarding-20260730T041902-0400.sqlite3`.
+- Ran the zero-write dry-run, then committed with the exact controlled phrase.
+- Service result: 29 inserts, 2 updates, 0 deletes at
+  `2026-07-30T08:19:48Z`.
+- Onboarded `THS-EQP-000002`, `THS-EQP-000003`, `THS-MNT-000002`, and
+  `THS-PART-000001` with the approved identities and states.
+- Verified all eight slot rows and all seven assignments byte-for-byte
+  unchanged; A2 remains empty and restricted.
+- Verified no unrelated protected table changed, integrity `ok`, zero foreign
+  key violations, and post-onboarding SHA-256
+  `3A9992C0337A11092780AC9F1B5E43126C03509A1EE749CC21679360DF3CFD28`.
+- Dashboard, replacement, AMS, and maintenance routes returned HTTP 200 with
+  zero database writes.
+- Focused suites passed: 123. Full regression passed: 350.
+- No physical repair, A2 return to service, feeder consumption or storage
+  assignment, second feeder, parts reconciliation, schema, health, process, or
+  Main change occurred.

@@ -1,0 +1,92 @@
+# Filament Inventory Module v1
+
+## Module boundary
+
+Filament is the first configured THS Inventory System category. A catalog product describes a reusable product/color; each real spool is an individual inventory instance. Four Bambu Lab PLA Basic Brown spools therefore share one product row and have four permanent `THS-FIL` IDs.
+
+The normal grouped query reports roll counts by state, available grams, reserved grams, and later reorder state. Detailed views expose individual spools.
+
+## Verified sealed inventory seed
+
+| Brand | Products/colors | Spools | Seed grams |
+|---|---|---:|---:|
+| Overture | PLA Black | 6 | 6,000 |
+| Elegoo | PLA White; use-up stock | 2 | 2,000 |
+| Bambu Lab | PLA Basic: Pink, Orange, Cobalt Blue, Turquoise, Blue, Bambu Green, Dark Gray, Jade White, Brown, Gold, Gray | 18 | 18,000 |
+| AMOLEN | PLA Silk Dual Color: Black/Red, Black/Purple, Black/Blue, Black/Green | 4 | 800 |
+| **Total** | **17 catalog products** | **30** | **26,800** |
+
+AMOLEN weights are verified at 200 g each. Bambu, Overture, and Elegoo use a documented 1,000 g standard-spool assumption. No manufacturer SKU or color code was invented.
+
+## Filament fields
+
+The item-type template requires material, manufacturer color name, 1.75 mm diameter, and nominal grams. Optional attributes include color code and packaging/spool weight. Catalog products also store manufacturer, product line, variant, optional SKU, and notes.
+
+Instances support permanent ID, product, original/remaining grams, sealed/open/loaded/empty/archive state, condition, location, purchase/open/empty/archive dates, notes, verification, and timestamps.
+
+## Physical spool operating rule
+
+> Register new sealed filament when it is received. Register legacy open
+> filament when it first enters active use. After registration, reuse the same
+> physical spool record throughout its lifecycle.
+
+This prevents duplicate physical identities while allowing legitimate
+same-brand and same-color spools to retain separate permanent `THS-FIL` IDs.
+
+## Verified Overture receipt
+
+Legacy order `THS-ORD-000001` is Received at four of four. Catalog item 18 is
+Overture High Speed PLA, White, refill coil, 1.75 mm, and 1,000 g. Physical
+instances `THS-FIL-000034` through `THS-FIL-000037` are sealed and unopened in
+Sealed Filament Rack. Their two immutable delivery-evidence records are linked
+to receiving batch `29251fad-da91-4e08-9c43-87c85743e45b`.
+
+## AMS configuration
+
+AMS 1 and AMS 2 each contain four numbered location slots. Empty is valid. Partial unique indexes prevent a spool from occupying two active slots and a slot from holding two active spools. Assignment rows reference immutable load and unload transactions.
+
+No current spool assignment was seeded. Earlier filament planning listed proposed/observed colors, but this checkpoint's instruction says not to invent current assignments. Those observations must be re-verified before import.
+
+## Open-wall status
+
+No uncertain wall stock is confirmed. The known black Bambu TPU and probably-Elegoo red PLA remain outside active inventory until brand, product, amount, and location are verified. Approximate amounts may later be entered as Full, 3/4, 1/2, 1/4, or Nearly Empty and converted to clearly labeled estimates.
+
+## Import
+
+Use `data/inventory/inventory-import-template.csv`. Dry-run first; unverified rows reject by default. For real filament imports, put specifications in `attributes`, for example:
+
+```text
+material=TPU;manufacturer_color_name=Black;diameter_mm=1.75;nominal_weight_g=1000
+```
+
+## Acceptance coverage
+
+Automated tests cover 30 spools, brand totals, 26,800 g, four Brown spools grouped under one product, 200 g AMOLEN rolls, unique permanent IDs, state grouping, nonnegative remaining grams, archive history, reservations, two four-slot AMS units, active assignment uniqueness, and load/unload history.
+
+## Read-only dashboard
+
+The first visible Filament Inventory interface is complete. It reads the migrated SQLite database and provides:
+
+- live dashboard totals;
+- 17 grouped filament products;
+- product pages with physical spool lists;
+- individual spool pages with transaction history;
+- two AMS units with eight verified-empty slots;
+- search by manufacturer, material, color, product line, THS-FIL ID, and notes;
+- state, manufacturer, material, and low-stock filters;
+- honest no-results and no-reorder-rule states.
+
+The original browsing routes remain read-only. One narrow confirmed workflow now exists: [Receive a Verified Sealed Spool](RECEIVE_VERIFIED_SEALED_SPOOL.md). It selects or creates a verified product, previews the next `THS-FIL` ID, shows every value before writing, and commits through the Inventory Action Service.
+
+No existing inventory can be edited. Quantity corrections, AMS editing, and broad product management remain unexposed. Future filament mutations must use the centralized [Inventory Action Service](INVENTORY_ACTION_SERVICE.md).
+
+The first composite shop workflow is now [Replace Active Filament Spool](REPLACE_ACTIVE_FILAMENT_SPOOL.md). It empties the loaded outgoing spool, opens one selected sealed replacement, and loads it into the same or another validated AMS slot with three child audits under one immutable parent workflow transaction.
+
+Verified scenarios cover the completed White-to-Bambu-Jade-White change and the upcoming Orange-to-Orange change for the modified Tweety Bird THS hat. No product or color is hard-coded into the workflow.
+
+## Verified AMS initialization
+
+[Initialize Verified AMS State](INITIALIZE_VERIFIED_AMS_STATE.md) provides the narrow bootstrap path required when the physical AMS state is known but no active assignment exists in the database. It accepts only a positively identified Sealed or Open `THS-FIL` spool and a configured empty AMS slot, previews without writing, requires confirmation, and commits through the Inventory Action Service without changing weight.
+
+Historical White and Orange replacement events cannot be fully reconstructed until the outgoing spool IDs, replacement spool IDs, and exact AMS slots are positively identified. The current Jade White and Orange replacements may be initialized in their verified present slots without inventing the outgoing history.
+

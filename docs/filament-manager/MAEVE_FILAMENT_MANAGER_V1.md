@@ -1,5 +1,11 @@
 # Maeve Filament Manager v1
 
+> **Architecture notice:** This page is the original product plan for the first Filament Inventory module inside the broader, category-agnostic [THS Inventory System](../inventory-system/THS_INVENTORY_SYSTEM_ARCHITECTURE.md). The inventory database is not named Maeve and is not filament-only. Where this early plan conflicts with the verified database checkpoint, the architecture and [Filament Module v1](../inventory-system/FILAMENT_MODULE_V1.md) pages control.
+
+> **Built for my shop first, but not trapped inside my shop.**
+
+Maeve may be deeply customized for Cowboy's THS shop, while the shared core stays shop-neutral. Printer brands, AMS or material systems, alerts, terminology, workflows, branding, and layouts must remain configurable. Self-hosting is implemented as the operating model; cloud services, phone clients, community applications, plugins, and neutral Bambu Lab/Prusa/Klipper/OctoPrint integration boundaries are planned or deferred as labeled in the [Open-Source Project Principles](../OPEN_SOURCE_PROJECT_PRINCIPLES.md). This document does not claim that PWA, iPhone, cloud, or live Bambu integration is complete.
+
 ## Purpose
 
 Maeve Filament Manager is the THS Command Center source of truth for filament stock, physical spools, AMS locations, print reservations, usage deductions, emergency minimums, and reorder warnings.
@@ -21,8 +27,8 @@ Bambu Studio remains an input for RFID-recognized filament and printer/AMS statu
 
 - Sealed stock
 - Open wall stock
-- AMS 1 slots 1–4
-- AMS 2 slots 1–4
+- AMS 1 slots 1â€“4
+- AMS 2 slots 1â€“4
 - In use / active print
 - Empty / retired
 
@@ -121,6 +127,8 @@ Represents one real spool or refill in the workshop.
 
 ## Initial AMS State
 
+> Historical planning note only. These assignments were not re-verified for the database checkpoint and have **not** been seeded. AMS 1 and AMS 2 currently seed as four empty, assignable slots each.
+
 ### AMS 1
 
 - Slot 1: Black
@@ -137,7 +145,7 @@ Represents one real spool or refill in the workshop.
 
 ## Initial Automation Roadmap
 
-### Phase A — Foundation
+### Phase A â€” Foundation
 
 - SQLite database
 - Seed current inventory
@@ -145,14 +153,14 @@ Represents one real spool or refill in the workshop.
 - Manual stock and location actions
 - Emergency minimum settings
 
-### Phase B — Print Transactions
+### Phase B â€” Print Transactions
 
 - Enter slicer usage by project, plate, material, and AMS slot
 - Reserve stock
 - Complete print and deduct stock
 - Review failed/canceled jobs
 
-### Phase C — Bambu Integration
+### Phase C â€” Bambu Integration
 
 - Read printer state over the local network
 - Read AMS slot assignments
@@ -160,10 +168,23 @@ Represents one real spool or refill in the workshop.
 - Import sliced filament estimates when technically available
 - Automatically create and complete usage transactions
 
-### Phase D — Optional Tags
+### Phase D â€” Optional Tags
 
 Do not require NFC or QR tags for v1. Add them later only where they reduce work for third-party, loose, or frequently moved spools. Bambu RFID remains useful for compatible Bambu filament.
+
+### Simple RFID policy and true filament identity
+
+THS Inventory owns the verified manufacturer, product, material, color, spool status, and usage. AMS-reported information may supplement those facts but must never overwrite them.
+
+An original Bambu RFID tag may be stored as an optional external identifier for the Bambu spool it came with. Do not design around transferring Bambu tags to Overture or other brands. Enter non-Bambu filament manually in Bambu Studio and track it under its true identity in THS Inventory.
+
+Cowboy temporarily transferred a Bambu tag in a pinch but plans to stop. No custom THS RFID system is required now. Barcode, QR, or RFID tagging for non-Bambu inventory remains an optional future enhancement.
+
+One bulk box of Overture White is currently on order and is expected, but not guaranteed, to contain four refill rolls. Do not receive it before Cowboy verifies the delivered quantity and condition. If four refills are verified, represent them as four individually tracked physical instances linked to one purchase or receiving batch.
+
+Bambu Lab PLA Basic Orange now has one opened/loaded spool and one sealed reserve after the verified layer-283 replacement. Add Orange to a future shopping/reorder list because the sealed reserve has reached one; do not invent a reorder rule or mutate inventory outside the controlled workflow.
 
 ## Success Criteria
 
 A normal completed print should require no manual gram calculation. Maeve should know which AMS spool was used, deduct the recorded slicer estimate, update remaining stock, and warn when sealed emergency stock falls below its minimum.
+
