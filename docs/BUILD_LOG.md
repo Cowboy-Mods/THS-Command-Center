@@ -518,3 +518,30 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   Full regression passed: 350.
 - Production, schema, runtime service, physical repair, feeder state, health
   data, and Main remained untouched.
+
+# 2026-07-30 - AMS production onboarding
+
+- Reverified the sole port-8787 listener from live process state as the
+  isolated production bootstrap with the explicit external database path.
+- Verified clean synchronized source commit
+  `5461fe83346fb785fcca5933f9a875bc2717b4c7`, schema 19, integrity `ok`,
+  zero foreign-key violations, and pre-onboarding SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+- Created and verified the byte-identical external rollback backup at
+  `C:\Users\Cowboy\Documents\THS-Command-Center-Data\backups\ams-onboarding\inventory-schema19-pre-ams-onboarding-20260730T041902-0400.sqlite3`.
+- Ran the zero-write dry-run, then committed with the exact controlled phrase.
+- Service result: 29 inserts, 2 updates, 0 deletes at
+  `2026-07-30T08:19:48Z`.
+- Onboarded `THS-EQP-000002`, `THS-EQP-000003`, `THS-MNT-000002`, and
+  `THS-PART-000001` with the approved identities and states.
+- Verified all eight slot rows and all seven assignments byte-for-byte
+  unchanged; A2 remains empty and restricted.
+- Verified no unrelated protected table changed, integrity `ok`, zero foreign
+  key violations, and post-onboarding SHA-256
+  `3A9992C0337A11092780AC9F1B5E43126C03509A1EE749CC21679360DF3CFD28`.
+- Dashboard, replacement, AMS, and maintenance routes returned HTTP 200 with
+  zero database writes.
+- Focused suites passed: 123. Full regression passed: 350.
+- No physical repair, A2 return to service, feeder consumption or storage
+  assignment, second feeder, parts reconciliation, schema, health, process, or
+  Main change occurred.
