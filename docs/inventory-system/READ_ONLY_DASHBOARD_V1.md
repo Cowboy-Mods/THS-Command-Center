@@ -27,7 +27,7 @@ No package installation command is required.
 From the repository root:
 
 ```powershell
-py -3 -m inventory.cli migrate
+py -3 -m inventory.cli --database .\var\inventory-test.sqlite3 migrate
 ```
 
 This explicit command applies migrations and seeds the verified starting inventory. Starting or browsing the web application does not apply migrations and does not mutate inventory.
@@ -35,7 +35,7 @@ This explicit command applies migrations and seeds the verified starting invento
 ## Start the application
 
 ```powershell
-py -3 -m inventory.cli serve
+py -3 -m inventory.cli --database .\var\inventory-test.sqlite3 serve
 ```
 
 Open:
@@ -44,9 +44,15 @@ Open:
 http://127.0.0.1:8787
 ```
 
-Press `Ctrl+C` in PowerShell to stop the application.
+Press `Ctrl+C` in PowerShell to stop the application. The `serve` command
+requires an explicit database path so an accidental checkout-local server
+cannot start against an unintended database.
 
-To use another already-migrated database:
+For the permanent THS production dashboard, use `Start THS Dashboard.cmd`. The
+verified launcher supplies the external production database path and refuses
+to start if port 8787 belongs to another process.
+
+To use another already-migrated development database:
 
 ```powershell
 py -3 -m inventory.cli --database .\var\inventory-test.sqlite3 serve

@@ -1,4 +1,6 @@
 import unittest
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -6,6 +8,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PermanentDashboardLauncherTests(unittest.TestCase):
+    def test_serve_refuses_an_implicit_database(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "inventory.cli", "serve"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--database is required for serve", result.stderr)
+
+    def test_controlled_onboarding_refuses_an_implicit_database(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "inventory.cli", "ams-onboard"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("--database is required for ams-onboard", result.stderr)
+
     def test_cmd_wrappers_are_checkout_relative(self):
         for filename, action in (
             ("Start THS Dashboard.cmd", "start"),

@@ -12,7 +12,14 @@ from .web import serve
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="ths-inventory")
-    parser.add_argument("--database", type=Path, default=DEFAULT_DB)
+    parser.add_argument(
+        "--database",
+        type=Path,
+        help=(
+            "SQLite database path. Required for serve and ams-onboard; "
+            f"other commands default to {DEFAULT_DB}."
+        ),
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("migrate")
     imp = sub.add_parser("import")
@@ -36,11 +43,14 @@ def main() -> None:
         help="Required exact confirmation phrase when --commit is supplied",
     )
     args = parser.parse_args()
+    if args.command in {"serve", "ams-onboard"} and args.database is None:
+        parser.error(f"--database is required for {args.command}")
+    database = args.database or DEFAULT_DB
     if args.command == "serve":
-        serve(args.database, args.host, args.port)
+        serve(database, args.host, args.port)
         return
     if args.command == "ams-onboard":
-        service = AMSOnboardingService(args.database)
+        service = AMSOnboardingService(database)
         try:
             if args.commit:
                 result = service.commit(confirmation=args.confirm or "")
@@ -52,10 +62,10 @@ def main() -> None:
             parser.error(str(exc))
         print(json.dumps(result, indent=2, sort_keys=True))
         return
-    db = connect(args.database)
+    db = connect(database)
     migrate(db)
     if args.command == "migrate":
-        print(f"Database ready: {args.database}")
+        print(f"Database ready: {database}")
     else:
         result = import_csv(db, args.csv, apply=args.apply, allow_unverified=args.allow_unverified)
         print(
