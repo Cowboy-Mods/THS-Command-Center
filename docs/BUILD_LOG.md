@@ -496,3 +496,25 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
   `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+
+# 2026-07-30 - Atomic AMS onboarding service
+
+- Implemented a dedicated source-only `AMSOnboardingService` for the approved
+  29-insert, 2-update, 0-delete plan.
+- Added a zero-write default CLI preview and explicit commit gate requiring
+  `APPLY-AMS-ONBOARDING-29-2-0`.
+- Restricted existing-row updates to P1S Registry row 1 and maintenance asset
+  row 2 with exact stale-state predicates.
+- Added duplicate/replay protection for equipment, serials, relationships,
+  bridges, maintenance identity, and feeder permanent/model/UPC identity.
+- Added per-write failure injection and proved rollback after each of the 31
+  child writes plus a postcondition failure.
+- Rehearsed against disposable byte copies of production. Every rollback copy
+  restored SHA-256
+  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`;
+  the successful candidate produced 29/2/0, integrity `ok`, and zero foreign
+  key violations.
+- Dedicated service/command tests passed: 11. Focused suites passed: 123.
+  Full regression passed: 350.
+- Production, schema, runtime service, physical repair, feeder state, health
+  data, and Main remained untouched.
