@@ -53,12 +53,15 @@ and has SHA-256
 `C3FF2FD2EA7349448EAD9F8375CAF78782937F481AA625FD630864E3D7FCD8F3`.
 The external production database remained schema 19 with its exact accepted
 checksum. There was never more than one listener during either observation,
-but the current listener is not the verified production service.
+but that intermediate listener was not the verified production service.
 
 This checkpoint did not create, stop, replace, or restart either process. PID
-60168 must not be terminated without explicit process-cleanup authorization.
-Until it is resolved, port 8787 must not be treated as a production-dashboard
-validation endpoint or used for the live P1S checkpoint.
+60168 was not terminated by this checkpoint. At the final post-push
+verification, port 8787 had returned to the sole verified production launcher,
+PID 58064, using the isolated bootstrap and explicit external production
+database path. The reason for the temporary ownership change was not proven.
+Every future connectivity gate must therefore reverify the sole listener and
+stop if the unverified old-worktree process reappears.
 
 ## Existing architecture findings
 
@@ -277,9 +280,10 @@ module, inventory service, maintenance service, or printer-control code changed.
   inventory; disagreement must surface as a warning, never an automatic write.
 - The existing telemetry table is a current-state projection, not immutable raw
   telemetry history. Retention/history requires a separate design decision.
-- Port 8787 is currently owned by an unverified old-worktree server using a
-  schema-8 checkout-local database. This does not change production data, but it
-  can display stale/wrong shop state and blocks live-integration validation.
+- Port 8787 temporarily changed to an unverified old-worktree server using a
+  schema-8 checkout-local database before returning to the verified production
+  launcher without action by this checkpoint. Recurrence could display
+  stale/wrong shop state and must block live-integration validation.
 
 ## Rollback
 
@@ -296,9 +300,10 @@ credential-local authenticated observation.**
 
 That checkpoint should require explicit approval and then:
 
-1. separately authorize verification and graceful cleanup of PID 60168, then
-   restore only the verified production launcher and prove its explicit
-   database path and sole listener ownership;
+1. reverify that port 8787 has exactly one listener and that it is the isolated
+   production launcher with the explicit external database; if PID 60168 or
+   another old-worktree server reappears, stop for separate process-cleanup
+   authorization;
 2. physically confirm P1S IPv4, MAC, serial, LAN-only/cloud mode, and router
    reservation plan;
 3. review and add one MQTT/TLS dependency if justified;
