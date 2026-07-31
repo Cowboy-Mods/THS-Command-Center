@@ -26,6 +26,7 @@ from .actions import ActionContext
 from .production import ProductionError, ProductionService
 from .open_spool import RegisterExistingOpenSpoolWorkflow, RegisterOpenSpoolError
 from .maintenance import MaintenanceError, MaintenanceWorkflow
+from .telemetry import telemetry_feature_enabled
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -47,7 +48,7 @@ def display(value, fallback="Not recorded") -> str:
 
 
 class InventoryWebApp:
-    def __init__(self, database=DEFAULT_DB):
+    def __init__(self, database=DEFAULT_DB, *, p1s_telemetry_enabled: bool | None = None):
         self.database = Path(database)
         self.queries = InventoryQueries(self.database)
         self.receiving = ReceiveSpoolWorkflow(self.database)
@@ -57,6 +58,11 @@ class InventoryWebApp:
         self.returning = ReturnSpoolToStorageWorkflow(self.database)
         self.open_spool = RegisterExistingOpenSpoolWorkflow(self.database)
         self.maintenance = MaintenanceWorkflow(self.database)
+        self.p1s_telemetry_enabled = (
+            telemetry_feature_enabled()
+            if p1s_telemetry_enabled is None
+            else bool(p1s_telemetry_enabled)
+        )
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -202,6 +208,8 @@ class InventoryWebApp:
             return self._audit_mode(), 200
         if path == "/projects":
             return self._projects(), 200
+        if path == "/integrations/p1s" and self.p1s_telemetry_enabled:
+            return self._p1s_telemetry_placeholder(), 200
         match = re.fullmatch(r"/orders/(\d+)/receive", path)
         if match:
             return self._order_receipt_form(int(match.group(1))), 200
@@ -763,6 +771,8 @@ class InventoryWebApp:
             nav.append(f'<section class="nav-section"><h2>{esc(section)}</h2><ul>')
             for label, path in links:
                 nav.append(f'<li><a href="{esc(path)}">{esc(label)}</a></li>')
+            if section == "Integrations" and self.p1s_telemetry_enabled:
+                nav.append('<li><a href="/integrations/p1s">P1S Live Status</a></li>')
             nav.append("</ul></section>")
         return f"""<!doctype html>
 <html lang="en">
@@ -2288,6 +2298,22 @@ class InventoryWebApp:
             name, content,
             f'<a href="/">Dashboard</a> / <span aria-current="page">{esc(name)}</span>',
             description="This module is not active in the read-only dashboard checkpoint.",
+        )
+
+    def _p1s_telemetry_placeholder(self) -> str:
+        return self._shell(
+            "P1S Live Status",
+            """<section class="page-heading"><div><p class="eyebrow">Read-only integration preview</p>
+            <h1>P1S Live Status</h1><p>The display foundation is enabled, but no live printer
+            connection has been configured or claimed.</p></div></section>
+            <div class="notice warning"><strong>Offline / unknown</strong>
+            <p>No authenticated observation is available. Device reports can never rewrite THS
+            inventory assignments, quantities, equipment identity, or production history.</p></div>
+            <section class="panel"><h2>Planned live fields</h2><p>Printer state, job, progress,
+            remaining time, layers, nozzle and bed temperatures, observed AMS/slot and filament,
+            warnings, errors, last update, and stale-data status.</p></section>""",
+            '<a href="/">Dashboard</a> / <span aria-current="page">P1S Live Status</span>',
+            description="Disabled-by-default read-only P1S telemetry placeholder.",
         )
 
     def _not_found(self) -> str:
