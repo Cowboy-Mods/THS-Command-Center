@@ -55,6 +55,11 @@ class PermanentDashboardLauncherTests(unittest.TestCase):
             "DatabasePath",
             "ApplicationPath",
             "Get-VerifiedTHSProcess",
+            "Get-CimInstance Win32_Process",
+            "$commandLine.Contains($bootstrapPath)",
+            '$commandLine.Contains("--database $databasePath")',
+            '$commandLine.Contains("serve --host $expectedHost --port $expectedPort")',
+            "$ownsExpectedListener",
             "Stop-Process -Id $process.Id",
             '"serve", "--host", "127.0.0.1", "--port", "8787"',
             "-I $bootstrapPath --database $databasePath migrate",
@@ -88,6 +93,45 @@ class PermanentDashboardLauncherTests(unittest.TestCase):
         self.assertIn("print(sys.executable)", text)
         self.assertIn('Get-Command "python.exe"', text)
         self.assertIn("$env:USERPROFILE", text)
+
+    def test_launcher_rejects_duplicate_or_occupied_production_port(self):
+        text = (ROOT / "scripts" / "ths-dashboard.ps1").read_text(encoding="utf-8")
+        self.assertIn("Get-NetTCPConnection -LocalPort 8787 -State Listen", text)
+        self.assertIn("THS Dashboard is already running as process", text)
+        self.assertIn("port 8787 is already owned by process", text)
+
+    def test_stale_marker_and_pid_reuse_are_handled_safely(self):
+        text = (ROOT / "scripts" / "ths-dashboard.ps1").read_text(encoding="utf-8")
+        self.assertIn("StartTimeUtcFileTime", text)
+        self.assertIn("$sameStart", text)
+        self.assertIn("Remove-StaleTHSRecord", text)
+        self.assertIn("Remove-Item -LiteralPath $pidFile -Force", text)
+
+    def test_stop_refuses_wrong_database_or_unrelated_process(self):
+        text = (ROOT / "scripts" / "ths-dashboard.ps1").read_text(encoding="utf-8")
+        self.assertIn("$sameDatabase", text)
+        self.assertIn("$sameCommandLine", text)
+        self.assertIn("$ownsExpectedListener", text)
+        self.assertIn("Safety check failed: PID, command line, database path", text)
+        self.assertLess(
+            text.index("Get-VerifiedTHSProcess $record"),
+            text.index("Stop-Process -Id $process.Id"),
+        )
+
+    def test_development_launcher_is_explicit_and_separated(self):
+        text = (ROOT / "scripts" / "ths-dashboard-development.ps1").read_text(
+            encoding="utf-8"
+        )
+        for required in (
+            "[Parameter(Mandatory = $true)]",
+            "$developmentPort = 8788",
+            "Development launcher refuses the production database",
+            "Explicit development database was not found",
+            "THS DEVELOPMENT",
+            "--database $databasePath serve --host 127.0.0.1 --port $developmentPort",
+        ):
+            self.assertIn(required, text)
+        self.assertNotIn("--port 8787", text)
 
 
 if __name__ == "__main__":

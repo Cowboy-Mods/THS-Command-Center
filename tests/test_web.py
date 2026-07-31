@@ -37,6 +37,15 @@ class ReadOnlyDashboardTests(unittest.TestCase):
         finally:
             server.server_close()
 
+    def test_01a_second_server_cannot_share_the_same_host_and_port(self):
+        first = create_server(self.database, port=0)
+        port = first.server_address[1]
+        try:
+            with self.assertRaises(OSError):
+                create_server(self.database, port=port)
+        finally:
+            first.server_close()
+
     def test_02_dashboard_returns_successfully(self):
         status, headers, page = self.page("/")
         self.assertEqual(status, 200)

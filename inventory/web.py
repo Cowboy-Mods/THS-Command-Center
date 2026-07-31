@@ -5,6 +5,7 @@ import mimetypes
 import re
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socket
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -2395,16 +2396,27 @@ def make_handler(app: InventoryWebApp):
     return Handler
 
 
+class ExclusiveThreadingHTTPServer(ThreadingHTTPServer):
+    """HTTP server that refuses a second listener on the same address."""
+
+    allow_reuse_address = False
+
+    def server_bind(self):
+        if hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+        super().server_bind()
+
+
 def create_server(database=DEFAULT_DB, host="127.0.0.1", port=8787) -> ThreadingHTTPServer:
     app = InventoryWebApp(database)
-    return ThreadingHTTPServer((host, port), make_handler(app))
+    return ExclusiveThreadingHTTPServer((host, port), make_handler(app))
 
 
 def serve(database=DEFAULT_DB, host="127.0.0.1", port=8787) -> None:
     app = InventoryWebApp(database)
     with closing(app.queries.connect()):
         pass
-    server = ThreadingHTTPServer((host, port), make_handler(app))
+    server = ExclusiveThreadingHTTPServer((host, port), make_handler(app))
     print(f"THS Inventory System running at http://{host}:{port}")
     print("Controlled inventory workflows enabled. General editing remains unavailable. Press Ctrl+C to stop.")
     try:

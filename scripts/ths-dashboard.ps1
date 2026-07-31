@@ -16,6 +16,8 @@ $pidFile = Join-Path $runtimePath "ths-dashboard.json"
 $dashboardUrl = "http://127.0.0.1:8787"
 $expectedApplicationPath = Join-Path $projectPath "inventory\__init__.py"
 $bootstrapPath = Join-Path $projectPath "scripts\ths_dashboard_bootstrap.py"
+$expectedHost = "127.0.0.1"
+$expectedPort = 8787
 
 function Get-THSPython {
     if ($env:THS_PYTHON) {
@@ -85,11 +87,23 @@ function Get-VerifiedTHSProcess {
         [System.IO.Path]::GetFullPath([string]$Record.ApplicationPath) -eq
         [System.IO.Path]::GetFullPath($expectedApplicationPath)
     )
+    $processDetails = Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)"
+    $commandLine = [string]$processDetails.CommandLine
+    $sameCommandLine = (
+        $commandLine -and
+        $commandLine.Contains($bootstrapPath) -and
+        $commandLine.Contains("--database $databasePath") -and
+        $commandLine.Contains("serve --host $expectedHost --port $expectedPort")
+    )
+    $ownsExpectedListener = Get-NetTCPConnection -LocalAddress $expectedHost `
+        -LocalPort $expectedPort -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwningProcess -eq $process.Id }
     if (-not (
         $sameExecutable -and $sameStart -and $sameProject -and
-        $sameDatabase -and $sameApplication
+        $sameDatabase -and $sameApplication -and $sameCommandLine -and
+        $ownsExpectedListener
     )) {
-        throw "Safety check failed: the recorded PID is not the exact THS Dashboard process."
+        throw "Safety check failed: PID, command line, database path, application path, or listener ownership does not match the approved THS Dashboard."
     }
     return $process
 }
@@ -172,6 +186,8 @@ try {
         DatabasePath = $databasePath
         ApplicationPath = $expectedApplicationPath
         Url = $dashboardUrl
+        Host = $expectedHost
+        Port = $expectedPort
     }
     $record | ConvertTo-Json | Set-Content -LiteralPath $pidFile -Encoding UTF8
 
