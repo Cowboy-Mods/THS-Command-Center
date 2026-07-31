@@ -7,7 +7,10 @@ import os
 import re
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Mapping, Protocol
+
+from .credentials import load_p1s_access_code
 
 
 class TelemetryConfigurationError(ValueError):
@@ -80,6 +83,38 @@ class P1STelemetryConfig:
                 f"{ACCESS_CODE_VARIABLE} is required when enabled"
             )
         _validate_host(host)
+        port = _bounded_int(values.get(PORT_VARIABLE, "8883"), PORT_VARIABLE, 1, 65535)
+        stale_after = _bounded_int(
+            values.get(STALE_AFTER_VARIABLE, "30"), STALE_AFTER_VARIABLE, 5, 3600
+        )
+        return cls(
+            enabled=True,
+            host=host,
+            port=port,
+            serial=serial,
+            access_code=access_code,
+            stale_after_seconds=stale_after,
+        )
+
+    @classmethod
+    def from_protected_store(
+        cls,
+        environ: Mapping[str, str] | None = None,
+        credential_path: Path | None = None,
+    ) -> "P1STelemetryConfig":
+        """Load non-secret settings normally and the access code from Windows DPAPI."""
+        values = os.environ if environ is None else environ
+        enabled = telemetry_feature_enabled(values)
+        if not enabled:
+            return cls(enabled=False)
+        host = (values.get(HOST_VARIABLE) or "").strip()
+        serial = (values.get(SERIAL_VARIABLE) or "").strip()
+        if not host:
+            raise TelemetryConfigurationError(f"{HOST_VARIABLE} is required when enabled")
+        if not serial:
+            raise TelemetryConfigurationError(f"{SERIAL_VARIABLE} is required when enabled")
+        _validate_host(host)
+        access_code = load_p1s_access_code(credential_path)
         port = _bounded_int(values.get(PORT_VARIABLE, "8883"), PORT_VARIABLE, 1, 65535)
         stale_after = _bounded_int(
             values.get(STALE_AFTER_VARIABLE, "30"), STALE_AFTER_VARIABLE, 5, 3600
