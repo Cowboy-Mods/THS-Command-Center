@@ -62,6 +62,12 @@ Tracking behavior is explicit:
 - `lot` creates a distinct verified stock lot;
 - `non_inventory` records physical completion without creating stock.
 
+The immutable purchase-line intent remains the source procurement fact. When a
+line has an audited append-only tracking correction, receiving uses the
+`effective_tracking_policy` exposed by `purchase_order_lines_effective` without
+rewriting the original line. See
+[Purchase-Line Tracking Corrections](PURCHASE_LINE_TRACKING_CORRECTIONS.md).
+
 All inventory creation passes through `InventoryActionService`. A failed
 receipt, evidence link, inventory action, history entry, or status projection
 rolls back the entire commit.
@@ -72,6 +78,8 @@ Receiving requires existing delivery-scoped Purchase Registry evidence. The
 external file path, SHA-256, and byte size are signed during review and
 revalidated immediately before commit. Purchase-only evidence cannot prove
 physical arrival.
+
+A tracking correction is not delivery evidence and never authorizes receiving.
 
 Existing purchase-maintenance links remain relevance links. Receiving a linked
 part does not change maintenance status and does not mark the part installed or

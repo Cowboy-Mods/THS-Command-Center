@@ -18,7 +18,7 @@ class AMSOnboardingError(ValueError):
 class AMSOnboardingService:
     """Apply Cowboy's approved AMS onboarding as one exact atomic transaction."""
 
-    REQUIRED_SCHEMA = "019_flexible_spool_replacement.sql"
+    REQUIRED_SCHEMA = "020_purchase_line_tracking_corrections.sql"
     CONFIRMATION_PHRASE = "APPLY-AMS-ONBOARDING-29-2-0"
     ACTOR = "Cowboy"
     P1S_NUMBER = "THS-EQP-000001"
@@ -640,8 +640,8 @@ class AMSOnboardingService:
         migrations = db.execute(
             "SELECT name FROM schema_migrations ORDER BY name"
         ).fetchall()
-        if len(migrations) != 19 or migrations[-1][0] != self.REQUIRED_SCHEMA:
-            raise AMSOnboardingError("database schema is not exactly 19")
+        if len(migrations) != 20 or migrations[-1][0] != self.REQUIRED_SCHEMA:
+            raise AMSOnboardingError("database schema is not exactly 20")
         if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise AMSOnboardingError("database integrity check failed")
         if db.execute("PRAGMA foreign_key_check").fetchall():

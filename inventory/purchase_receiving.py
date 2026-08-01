@@ -397,7 +397,7 @@ class PurchaseReceivingService:
                 raise PurchaseReceivingError(
                     f"line {source['line_number']} receipt exceeds its outstanding quantity"
                 )
-            policy = source["inventory_tracking_intent"]
+            policy = source["effective_tracking_policy"]
             condition = self._text(raw.get("condition"), "condition", 20).lower()
             if condition not in {"new", "good", "damaged"}:
                 raise PurchaseReceivingError("select a valid received condition")
@@ -503,8 +503,8 @@ class PurchaseReceivingService:
             quantity = Decimal(line["quantity_received"])
             if quantity > Decimal(source["quantity_outstanding"]):
                 raise PurchaseReceivingError("receipt exceeds outstanding quantity")
-            if line["tracking_policy"] != source["inventory_tracking_intent"]:
-                raise PurchaseReceivingError("purchase tracking intent changed")
+            if line["tracking_policy"] != source["effective_tracking_policy"]:
+                raise PurchaseReceivingError("effective purchase tracking policy changed")
             if line["tracking_policy"] != "non_inventory":
                 catalog = db.execute(
                     """SELECT ci.base_unit_id,it.tracking_method,it.id_prefix
@@ -566,11 +566,11 @@ class PurchaseReceivingService:
         lines = [
             dict(row)
             for row in db.execute(
-                """SELECT pol.*,plrs.quantity_received,plrs.quantity_outstanding
-                FROM purchase_order_lines pol
+                """SELECT pole.*,plrs.quantity_received,plrs.quantity_outstanding
+                FROM purchase_order_lines_effective pole
                 JOIN purchase_line_receiving_status plrs
-                  ON plrs.purchase_order_line_id=pol.id
-                WHERE pol.purchase_order_id=? ORDER BY pol.line_number""",
+                  ON plrs.purchase_order_line_id=pole.id
+                WHERE pole.purchase_order_id=? ORDER BY pole.line_number""",
                 (purchase_id,),
             )
         ]
