@@ -233,3 +233,60 @@ regression suite are rerun to prove the branch remains healthy.
 No printer or router setting, live connection, protected credential, production
 data/schema/service, deployment, DHCP reservation, inventory, Financial
 Headquarters, health module, or Main branch was changed.
+
+## Final phase decision and parked status
+
+Decision recorded: 2026-07-31
+Status: **Parked — preserved for a safe future restart, not abandoned**
+
+Cowboy's final decision for this phase is:
+
+- keep the P1S cloud-bound;
+- keep LAN Only Mode off;
+- do not enable Developer Mode;
+- preserve Bambu Studio, Bambu Handy, cloud printing, remote camera access, and
+  remote monitoring;
+- postpone Maeve live P1S telemetry until a safe cloud-compatible method is
+  available.
+
+The feature branch and its complete history remain preserved at
+`feature/p1s-read-only-telemetry`. They are deliberately not merged into Main.
+The protected credential remains outside Git and must not be accessed, tested,
+replaced, or removed as part of parking this work.
+
+### Exact future restart point
+
+Restart only in a new, separately authorized checkpoint from the then-current
+tip of `feature/p1s-read-only-telemetry`. Begin with a source-only review of the
+latest official Bambu integration and security documentation. Do not begin with
+a live connection or credential check.
+
+The restart checkpoint must first revalidate:
+
+1. Cowboy still wants live P1S telemetry without sacrificing the normal Bambu
+   Studio, Bambu Handy, cloud-printing, camera, and remote-monitoring workflow.
+2. Bambu now provides a documented cloud-compatible, read-only integration, or
+   an officially approved partner method suitable for Maeve.
+3. The method does not require client impersonation, private-cloud protocol
+   bypass, LAN Only Mode, Developer Mode, MQTT publishing, or printer commands.
+4. Credential scope, storage, rotation, revocation, logs, and failure handling
+   have a reviewed least-privilege design. The existing protected access code
+   is not read merely to perform this review.
+5. Current printer model, serial, firmware, IP, MAC, cloud binding, and network
+   mode are physically and passively reverified before any later live pilot.
+6. The offline adapter, telemetry normalization, freshness rules, synthetic
+   broker tests, and zero-authoritative-write guarantees still pass on the
+   current codebase.
+7. A bounded zero-publish test plan, rollback plan, and explicit Cowboy
+   authorization exist before the first live attempt.
+
+If no safe cloud-compatible method exists, leave this branch parked and make no
+connection attempt.
+
+### Separation from the next Maeve checkpoint
+
+The next Maeve project checkpoint starts separately from current `origin/main`,
+not from this parked telemetry branch. Its scope returns to the original Maeve
+plan: core dashboard, inventory integration, briefings, calendar, weather,
+reminders, Raspberry Pi runtime, and hardware planning. P1S live telemetry must
+not be silently carried into that work.
