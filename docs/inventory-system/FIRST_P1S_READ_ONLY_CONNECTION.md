@@ -150,7 +150,8 @@ No router setting or reservation was changed.
 ## Boundary confirmation
 
 Production PID `58064` was not stopped or restarted. Production port 8787,
-database, schema, and records were untouched. No P1S/AMS command, MQTT publish,
-authentication attempt, credential entry, router change, DHCP reservation,
-persistent telemetry write, deployment, Main change, Financial Headquarters
-change, or health-module change occurred.
+database, schema, and records were untouched. Two bounded authentication attempts
+were rejected before subscription, as documented above. No P1S/AMS command,
+MQTT publish, router change, DHCP reservation, persistent telemetry write,
+deployment, Main change, Financial Headquarters change, or health-module change
+occurred.

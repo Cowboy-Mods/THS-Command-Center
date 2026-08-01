@@ -19,8 +19,21 @@ def main() -> int:
         observed = parse_bambu_status(
             payload, stale_after_seconds=config.stale_after_seconds
         )
-    except (SubscribeOnlyConnectionError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
+    except SubscribeOnlyConnectionError as exc:
+        print(json.dumps(exc.safe_summary(), indent=2), file=sys.stderr)
+        return 2
+    except ValueError:
+        print(
+            json.dumps(
+                {
+                    "category": "configuration",
+                    "message": "protected P1S configuration is invalid",
+                    "mqtt_code": None,
+                },
+                indent=2,
+            ),
+            file=sys.stderr,
+        )
         return 2
     result = observed.as_dashboard_projection()
     result["observation_timestamp"] = observed.received_at.isoformat().replace(
