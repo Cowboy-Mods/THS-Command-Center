@@ -38,9 +38,14 @@ lines to have effective policy `quantity` before receiving: four Bambu Lab 1 kg
 sealed filament refills plus FAC224, FAC023, LGL001, FAZ031, and FAW001.
 
 This migration does not insert those corrections and does not touch production.
-A later production checkpoint must generate an exact nine-line zero-write
-preview against the verified live database and require explicit approval before
-commit.
+A later production checkpoint must generate a zero-write correction preview for
+only the six lines incorrectly recorded as `individual`: the four filament
+refills, FAC023, and FAW001. It must not attempt corrections for FAC224, LGL001,
+or FAZ031 because those three source lines already use `quantity`.
+
+After the six-line correction is committed, a separate final verification must
+prove that all nine purchase lines resolve to effective tracking policy
+`quantity` before any receiving preview is generated.
 
 The four refills are nonserialized sealed stock. They must create quantity stock
 lots at the existing `Sealed Filament Rack`, not `THS-FIL-######` inventory

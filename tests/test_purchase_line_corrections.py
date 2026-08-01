@@ -2,6 +2,7 @@ import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from inventory.actions import ActionContext, InventoryActionError, InventoryActionService
 from inventory.db import MIGRATIONS, connect, migrate
@@ -109,7 +110,7 @@ class PurchaseLineTrackingCorrectionTests(unittest.TestCase):
             db.execute("DELETE FROM purchase_line_tracking_corrections")
         db.close()
 
-    def test_duplicate_contradictory_replay_stale_and_post_receipt_corrections_reject(self):
+    def test_duplicate_replay_and_existing_correction_reject(self):
         duplicate = self.form()
         duplicate["lines"] = [dict(duplicate["lines"][0]), dict(duplicate["lines"][0])]
         with self.assertRaisesRegex(PurchaseLineCorrectionError, "unique"):
@@ -120,6 +121,56 @@ class PurchaseLineTrackingCorrectionTests(unittest.TestCase):
             self.service.commit(review["token"], confirmed=True)
         with self.assertRaisesRegex(PurchaseLineCorrectionError, "active correction"):
             self.service.review(self.form())
+
+    def test_expired_signed_preview_is_rejected_without_writes(self):
+        review = self.service.review(self.form())
+        before = self._query(
+            "SELECT COUNT(*) FROM purchase_line_tracking_corrections"
+        )[0][0]
+        with patch("inventory.purchase_line_corrections.time.time", return_value=10**12):
+            with self.assertRaisesRegex(PurchaseLineCorrectionError, "expired"):
+                self.service.commit(review["token"], confirmed=True)
+        self.assertEqual(self._query(
+            "SELECT COUNT(*) FROM purchase_line_tracking_corrections"
+        )[0][0], before)
+
+    def test_purchase_line_with_existing_receipt_cannot_be_corrected(self):
+        evidence_path = Path(self.temp.name) / "existing-receipt.jpg"
+        evidence_path.write_bytes(b"temporary existing receipt evidence")
+        evidence = self.purchase_service.commit_add_evidence(
+            self.purchase_service.review_add_evidence({
+                "purchase_id": self.purchase_id, "actor": "Cowboy",
+                "evidence_scope": "delivery", "evidence_type": "photo",
+                "file_path": str(evidence_path), "document_date": "2026-08-01",
+                "caption": "Temporary existing receipt fixture",
+                "reason": "Test evidence only.",
+            })["token"], confirmed=True,
+        )
+        evidence_uuid = self._query(
+            "SELECT evidence_uuid FROM purchase_evidence WHERE id=?",
+            (evidence["evidence_id"],),
+        )[0][0]
+        receiving = PurchaseReceivingService(self.database, b"receiving" * 4)
+        receiving.commit_receipt(receiving.review_receipt({
+            "purchase_id": self.purchase_id, "actor": "Cowboy",
+            "reason": "Temporary existing receipt fixture.",
+            "physical_receipt_date": "2026-08-01", "physical_receipt_time": "",
+            "receipt_time_precision": "date_only", "evidence_uuids": [evidence_uuid],
+            "lines": [{"purchase_order_line_id": self.line_ids[0],
+                       "quantity_received": "1", "condition": "new",
+                       "catalog_item_id": self.individual_item,
+                       "location_id": self.location_id}],
+        })["token"], confirmed=True)
+        before = self._query(
+            "SELECT COUNT(*) FROM purchase_line_tracking_corrections"
+        )[0][0]
+        form = self.form()
+        form["lines"] = [form["lines"][0]]
+        with self.assertRaisesRegex(PurchaseLineCorrectionError, "received.*cannot be corrected"):
+            self.service.review(form)
+        self.assertEqual(self._query(
+            "SELECT COUNT(*) FROM purchase_line_tracking_corrections"
+        )[0][0], before)
 
     def test_existing_purchase_behavior_is_unchanged_without_correction(self):
         snapshot = PurchaseReceivingService(self.database).receiving_status(self.purchase_id)
