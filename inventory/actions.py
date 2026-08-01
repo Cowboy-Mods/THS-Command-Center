@@ -100,6 +100,47 @@ class InventoryActionService:
 
         return self._atomic(work)
 
+    def ensure_location(
+        self, name: str, *, parent_id: int | None = None,
+        kind: str = "storage", slot_number: int | None = None,
+    ) -> tuple[int, bool]:
+        """Return an active location or create it through the audited write boundary."""
+        normalized = str(name or "").strip()
+        if not normalized:
+            raise InventoryActionError("location name is required")
+        if kind not in {"site", "storage", "equipment", "ams_slot"}:
+            raise InventoryActionError("invalid location kind")
+        if parent_id is not None:
+            self._require("locations", parent_id, "parent location")
+        if kind == "ams_slot":
+            if not isinstance(slot_number, int) or slot_number <= 0:
+                raise InventoryActionError("AMS slot location requires a positive slot number")
+        elif slot_number is not None:
+            raise InventoryActionError("only AMS slot locations can have a slot number")
+        existing = self.db.execute(
+            """SELECT id,kind,slot_number FROM locations
+            WHERE COALESCE(parent_id,0)=COALESCE(?,0)
+              AND lower(trim(name))=lower(trim(?)) AND archived_at IS NULL""",
+            (parent_id, normalized),
+        ).fetchone()
+        if existing:
+            if existing["kind"] != kind or existing["slot_number"] != slot_number:
+                raise InventoryActionError("existing location has different configuration")
+            return existing["id"], False
+
+        def work():
+            row_id = self.db.execute(
+                "INSERT INTO locations(parent_id,name,kind,slot_number) VALUES (?,?,?,?)",
+                (parent_id, normalized, kind, slot_number),
+            ).lastrowid
+            self._audit(
+                "create_location", "location", row_id, normalized, None,
+                self._row("locations", row_id), False,
+            )
+            return row_id, True
+
+        return self._atomic(work)
+
     def ensure_catalog_item(
         self, item_type_id: int, manufacturer_id: int | None, name: str,
         product_line: str, variant: str, base_unit_id: int, notes: str | None = None,
@@ -1576,7 +1617,7 @@ class InventoryActionService:
         if table not in {
             "categories", "item_types", "manufacturers", "catalog_items",
             "inventory_instances", "stock_lots", "reservations", "inventory_actions",
-            "orders", "receiving_batches", "printers",
+            "orders", "receiving_batches", "printers", "locations",
         }:
             raise RuntimeError("unsupported snapshot table")
         row = self.db.execute(f"SELECT * FROM {table} WHERE id=?", (row_id,)).fetchone()
