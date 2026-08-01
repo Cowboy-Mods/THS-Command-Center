@@ -64,7 +64,7 @@ The exact internal powered-hub model is not locked by this record.
 
 The following products remain deferred and must not be represented as purchased, installed, or required for enclosure manufacturing dimensions:
 
-- StarTech desktop powered USB hub
+- StarTech 10G5A2CS-USB-C-HUB — external 7-port powered desktop USB hub (5 USB-A + 2 USB-C), with 10 Gbps upstream connectivity and a 65 W power adapter
 - TP-Link TL-SG1210MPE Ethernet switch
 
 These purchases will be revisited after the complete USB-device count, power budget, Ethernet port and speed requirements, PoE usefulness, cable directions and lengths, and enclosure/bench clearances are verified. The desktop StarTech hub is an external bench-routing option; it is not automatically the internal enclosure hub.
