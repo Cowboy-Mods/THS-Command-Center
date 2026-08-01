@@ -1,18 +1,21 @@
 # First P1S Read-Only Connection Checkpoint
 
 Date: 2026-07-31  
-Status: **Blocked before authentication — LAN IP not positively identified**  
+Status: **Blocked at MQTT authentication — no subscription established**
 Branch: `feature/p1s-read-only-telemetry`
 
 ## Checkpoint outcome
 
-No authenticated printer connection was attempted. Passive evidence did not map
-the physically verified Wi-Fi MAC address to a current LAN IPv4 address. The
-restriction against guessing, scanning, or publishing an MQTT request therefore
-stopped the live portion of this checkpoint at the correct boundary.
+After an eero restart, the printer screen, eero client record, and PC neighbor
+resolution all agreed on the P1S identity. Two bounded encrypted MQTT connection
+attempts reached the printer, but the printer rejected the protected MQTT session
+before subscription. The second attempt followed a fresh private re-entry of the
+access code. No further retry was made.
 
-Source-only credential protection was completed and tested with fake secrets.
-No real access code was entered, copied, printed, stored, or committed.
+Source-only credential protection and a subscribe-only client were completed and
+tested with fake secrets and a synthetic broker. The real access code was entered
+only through the masked local prompt and remains DPAPI-protected outside Git. It
+was never copied, printed, logged, documented, or placed in a command line.
 
 ## Physically verified identity
 
@@ -24,10 +27,12 @@ No real access code was entered, copied, printed, stored, or committed.
 | Model text | `PF001-U` |
 | Serial | `01P00C511401400` |
 | Wi-Fi MAC | `94:A9:90:21:16:04` |
-| Printer network-screen IPv4 | `0.0.0.0` — not usable as an address |
+| Printer network-screen IPv4 | `192.168.5.226` |
+| eero client IPv4 | `192.168.5.226` |
 | Router manufacturer | eero |
-| Router model | Unknown |
-| Router client-list match | Unavailable; account access is currently blocked |
+| Router model | eero Max 7 |
+| Router client-list match | Yes; exact IP and MAC agreement |
+| Connection reported by eero | Living Room eero, 2.4 GHz, WPA3 |
 
 The LAN access code was visible to Cowboy but was deliberately not photographed,
 copied, or shared.
@@ -37,8 +42,8 @@ copied, or shared.
 Only existing local state was inspected. No subnet scan, ping sweep, DNS-SD
 query, printer connection, or router change was performed.
 
-- Windows neighbor table: no entry for `94:A9:90:21:16:04`.
-- ARP cache: no entry for `94:A9:90:21:16:04`.
+- A single-address reachability check to `192.168.5.226` succeeded.
+- Windows resolved `192.168.5.226` to `94:A9:90:21:16:04` on `Ethernet 2`.
 - Windows DNS cache: no Bambu, P1S, or THS Printer identity record.
 - PC address remained `192.168.7.8/22`; gateway remained `192.168.4.1`.
 - Bambu Studio visibly showed `THS Printer` and current Device/AMS status.
@@ -52,8 +57,13 @@ instead and did not reveal a LAN address.
 
 ## Live observed telemetry
 
-No live LAN observation was captured because authentication was not permitted
-without a positively matched IP, MAC, serial, name, and model.
+No live report was captured. Identity was positively matched, TLS connected, and
+the client sent an MQTT CONNECT packet. The printer rejected the MQTT session,
+so the client never established the report subscription.
+
+Two attempts were made: the initial protected credential and one careful private
+replacement. Both were rejected. Each client closed cleanly. No MQTT PUBLISH,
+`/request` topic, push-all request, or printer/AMS command was sent.
 
 All requested live fields remain **Unknown** for this checkpoint:
 
@@ -98,14 +108,15 @@ The file ACL is restricted to that identity and SYSTEM. Git ignores DPAPI files
 as a second defense. Telemetry configuration can load the code directly from
 the protected store without placing it in a command-line argument or report.
 
-Only fake credentials were used in tests. The real credential has not been
-entered because the IP identity gate is still blocked.
+The real credential is present only in the external DPAPI store and decrypts for
+Cowboy's Windows account. The file ACL grants access only to Cowboy and SYSTEM.
 
 Validation results:
 
-- focused P1S credential, telemetry, and launcher tests: 25 passed;
-- complete regression suite on disposable databases: 372 passed in 731.200 seconds;
-- default real credential file: absent.
+- focused subscribe-only, credential, and telemetry tests: 17 passed;
+- complete regression suite: 374 passed in 699.341 seconds;
+- protected real credential file: present and current-user decryptable;
+- fake-broker proof: CONNECT, report SUBSCRIBE, and DISCONNECT only; zero PUBLISH.
 
 ## DHCP reservation preview
 
@@ -113,30 +124,28 @@ The reservation cannot yet be safely proposed.
 
 | Required field | Current result |
 | --- | --- |
-| Verified current P1S IP | Unknown |
+| Verified current P1S IP | `192.168.5.226` |
 | Verified MAC | `94:A9:90:21:16:04` |
-| Router make/model | eero / model unknown |
+| Router make/model | eero / eero Max 7 |
 | Router DHCP range | Unknown |
-| Recommended reserved IP | Not selected; guessing is prohibited |
+| Recommended reserved IP | `192.168.5.226`, contingent on eero range/availability validation |
 | Confirmed safe/available | No — router configuration is unavailable |
 
 No router setting or reservation was changed.
 
 ## Exact next checkpoint
 
-1. Restore access to the eero account without sharing credentials with Codex.
-2. Read the eero model and DHCP range.
-3. Match a connected-device entry to Wi-Fi MAC `94:A9:90:21:16:04`.
-4. Confirm that entry shows THS Printer/P1S and record its current IPv4.
-5. Recheck the printer screen after it shows a real address rather than `0.0.0.0`.
-6. Re-run passive ARP/neighbor comparison and require agreement.
-7. Only then use the local masked credential prompt.
-8. Run a bounded encrypted subscribe-only capture of
-   `device/01P00C511401400/report`, with no publish or push-all request.
-9. If the printer sends no report without a publish, disconnect and report that
-   technical boundary.
-10. Produce a new DHCP reservation preview; do not apply it without separate
-    authorization.
+1. On the P1S, verify the displayed LAN access code and whether local/LAN access
+   is enabled; do not share the code in chat.
+2. Determine whether current P1S firmware requires an additional local-access
+   setting before MQTT authentication is accepted.
+3. Do not retry authentication until that setting boundary is understood.
+4. Once authorized, use the existing protected credential and repeat one bounded
+   encrypted subscribe-only capture of `device/01P00C511401400/report`.
+5. If authentication succeeds but no natural report arrives, disconnect rather
+   than publish a push-all request.
+6. Confirm the eero DHCP range and reservation availability, then produce a final
+   reservation preview. Do not apply it without separate authorization.
 
 ## Boundary confirmation
 
