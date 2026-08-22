@@ -90,6 +90,8 @@ class ReadOnlyAlertTracker:
                     self._add("stale", "TELEMETRY STALE", "Maeve is no longer receiving fresh printer data.")
                 if prior_mode in {"LIVE", "STALE"} and mode == "OFFLINE":
                     self._add("offline", "PRINTER DISCONNECTED", "The sanitized printer feed is offline.")
+                if prior_mode in {"STALE", "OFFLINE"} and mode == "LIVE":
+                    self._add("recovered", "PRINTER RECONNECTED", "The sanitized printer feed is live again.")
                 if prior_state == "printing" and state == "printing" and prior_progress is not None and current_progress is not None and current_progress >= prior_progress:
                     for threshold in (25, 50, 75):
                         if prior_progress < threshold <= current_progress:
@@ -354,8 +356,9 @@ class MaeveConsoleApp:
                   if (!(current.alerts || []).length) {{ const empty = document.createElement('p'); empty.className = 'fine'; empty.textContent = 'NO NEW ALERTS'; alertList.append(empty); }}
                   for (const alert of current.alerts || []) {{
                     const item = document.createElement('article'); item.className = 'alert-item ' + alert.kind;
-                    const title = document.createElement('strong'); title.textContent = alert.title;
-                    const message = document.createElement('span'); message.textContent = alert.message;
+                    const resolved = current.sanitized_state === 'LIVE' && ['offline', 'stale'].includes(alert.kind);
+                    const title = document.createElement('strong'); title.textContent = resolved ? 'RESOLVED — ' + alert.title : alert.title;
+                    const message = document.createElement('span'); message.textContent = resolved ? 'The printer feed is live again. This earlier alert is retained for history.' : alert.message;
                     const when = document.createElement('small'); when.textContent = new Date(alert.created_at).toLocaleTimeString();
                     item.append(title, message, when); alertList.append(item);
                   }}

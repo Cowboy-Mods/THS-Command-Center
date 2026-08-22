@@ -75,6 +75,7 @@ class ProtectedWebPushService:
             "warning": ("PRINTER WARNING", "Maeve reports a printer warning."),
             "stale": ("TELEMETRY STALE", "Maeve is no longer receiving fresh printer data."),
             "offline": ("PRINTER DISCONNECTED", "Maeve reports that the printer feed is offline."),
+            "recovered": ("PRINTER RECONNECTED", "Maeve reports that the printer feed is live again."),
             "first-layer-complete": ("FIRST LAYER COMPLETE", "The printer has advanced beyond layer one."),
             "milestone-25": ("PRINT 25%", "The active print has reached twenty-five percent."),
             "milestone-50": ("PRINT 50%", "The active print has reached fifty percent."),

@@ -168,6 +168,7 @@ class MaeveConsoleTests(unittest.TestCase):
         self.assertEqual(tracker.observe(paused)[0]["kind"], "paused")
         self.assertEqual(tracker.observe(stale)[0]["kind"], "stale")
         self.assertEqual(tracker.observe(offline)[0]["kind"], "offline")
+        self.assertEqual(tracker.observe(live)[0]["kind"], "recovered")
         kinds = [item["kind"] for item in tracker.observe(error)]
         self.assertIn("error", kinds)
         self.assertIn("warning", kinds)

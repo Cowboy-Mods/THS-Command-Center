@@ -35,6 +35,12 @@ function Get-ConsoleListener {
     return Get-NetTCPConnection -State Listen -LocalPort 48176 -ErrorAction SilentlyContinue
 }
 
+function Get-MaeveBridgeProcesses {
+    return @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+        Where-Object CommandLine -like "*$bridgeScript*" |
+        ForEach-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue })
+}
+
 function Get-SavedProcess([string]$Path, [string]$CommandFragment) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     $savedPid = 0
@@ -88,7 +94,8 @@ if ($Action -eq 'status') {
     $listener = Get-ConsoleListener
     $bridge = Get-SavedProcess $bridgePidFile $bridgeScript
     $farm = Get-SavedProcess $farmManagerPidFile '--remote-debugging-port=9223'
-    if ($process -and $listener.LocalAddress -eq '127.0.0.1' -and $listener.OwningProcess -eq $process.Id -and $bridge -and $farm -and (Test-LoopbackPort $debugPort)) { Write-Host "Maeve console and Farm Manager bridge are running locally at $consoleUrl"; exit 0 }
+    $bridgeProcesses = @(Get-MaeveBridgeProcesses)
+    if ($process -and $listener.LocalAddress -eq '127.0.0.1' -and $listener.OwningProcess -eq $process.Id -and $bridge -and $bridgeProcesses.Count -eq 1 -and $bridgeProcesses[0].Id -eq $bridge.Id -and $farm -and (Test-LoopbackPort $debugPort)) { Write-Host "Maeve console and Farm Manager bridge are running locally at $consoleUrl"; exit 0 }
     Write-Host 'Maeve console is stopped.'
     exit 1
 }
@@ -98,7 +105,18 @@ if ($Action -eq 'start') {
     $listener = Get-ConsoleListener
     $existingBridge = Get-SavedProcess $bridgePidFile $bridgeScript
     $existingFarm = Get-SavedProcess $farmManagerPidFile '--remote-debugging-port=9223'
-    if ($existing -and $listener.LocalAddress -eq '127.0.0.1' -and $listener.OwningProcess -eq $existing.Id -and $existingBridge -and $existingFarm -and (Test-LoopbackPort $debugPort)) { Write-Host "Maeve console and Farm Manager bridge are already running locally at $consoleUrl"; exit 0 }
+    $bridgeProcesses = @(Get-MaeveBridgeProcesses)
+    if ($existing -and $listener.LocalAddress -eq '127.0.0.1' -and $listener.OwningProcess -eq $existing.Id -and $existingBridge -and $bridgeProcesses.Count -eq 1 -and $bridgeProcesses[0].Id -eq $existingBridge.Id -and $existingFarm -and (Test-LoopbackPort $debugPort)) { Write-Host "Maeve console and Farm Manager bridge are already running locally at $consoleUrl"; exit 0 }
+    if ($existing -and $listener.LocalAddress -eq '127.0.0.1' -and $listener.OwningProcess -eq $existing.Id) {
+        [System.IO.File]::WriteAllText($stopSignal, 'stop', [System.Text.Encoding]::ASCII)
+        $existing.WaitForExit(8000) | Out-Null
+        if (-not $existing.HasExited) { Stop-ExactProcessTree -RootPid $existing.Id }
+        Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $stopSignal -Force -ErrorAction SilentlyContinue
+        $listener = Get-ConsoleListener
+    }
+    foreach ($bridgeProcess in $bridgeProcesses) { Stop-ExactProcessTree -RootPid $bridgeProcess.Id }
+    Remove-Item -LiteralPath $bridgePidFile -Force -ErrorAction SilentlyContinue
     if ($listener) { throw 'Port 48176 is already owned by another process. Maeve was not started.' }
     New-Item -ItemType Directory -Path $runtime -Force | Out-Null
     Remove-Item -LiteralPath $stopSignal -Force -ErrorAction SilentlyContinue
