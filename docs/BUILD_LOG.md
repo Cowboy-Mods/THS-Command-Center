@@ -545,3 +545,34 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - No physical repair, A2 return to service, feeder consumption or storage
   assignment, second feeder, parts reconciliation, schema, health, process, or
   Main change occurred.
+
+# 2026-08-22 - Maeve live monitoring checkpoint
+
+- Connected the monitoring-only Maeve bridge to the locally hosted Bambu Farm
+  Manager source and retained only allowlisted, sanitized printer and AMS data.
+- Added a phone-first Command Console, installable Home Screen web app, private
+  Tailscale Serve access, and an on-demand factory-camera view. Maeve remains
+  bound to loopback and is not directly exposed to the LAN or public internet.
+- Added protected generic Web Push delivery with duplicate suppression for
+  first-layer completion, 25/50/75 percent milestones, completion, pause,
+  sanitized failure/warning, stale telemetry, and disconnect.
+- Added read-only AMS unit and slot display with material, color, remaining
+  level when reported, and humidity. Active slot remains not reported unless
+  the source provides an unambiguous selector.
+- Added a disabled multi-camera visual-inspection contract for first-layer,
+  warp, spaghetti, and separation classification. No camera model has been
+  trained or enabled, and no automatic printer action exists.
+- Added reproducible private-runtime requirements for Web Push, Windows timezone
+  data, and the standards-compliant offline MQTT diagnostic.
+- Corrected the AMS dashboard's malformed f-string and replaced a real equipment
+  identity in the updated MQTT test with the approved synthetic fixture.
+- Focused offline validation passed: 75 tests covering MQTT framing, P1S camera,
+  Farm Manager telemetry, console, launchers, dashboard, bridge, gateway, push,
+  telemetry sanitization, and visual inspection.
+- Monitoring release is assessed at 85 percent complete. The full Maeve roadmap,
+  including validated visual inspection and confirmation-gated printer controls,
+  is assessed at 46 percent complete using the weighted model in
+  `MAEVE_LIVE_CHECKPOINT_2026-08-22.md`.
+- `control_capable` remains false. MQTT remained parked, the active print was not
+  interrupted, and no pause, cancel, print-start, movement, heating, AMS, file,
+  G-code, inventory, or other printer-control operation occurred.

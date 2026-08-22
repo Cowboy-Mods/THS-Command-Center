@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import mimetypes
 import re
 from contextlib import closing
@@ -28,6 +29,7 @@ from .production import ProductionError, ProductionService
 from .open_spool import RegisterExistingOpenSpoolWorkflow, RegisterOpenSpoolError
 from .maintenance import MaintenanceError, MaintenanceWorkflow
 from .telemetry import telemetry_feature_enabled
+from .maeve_telemetry import AtomicTelemetryStore, compare_reported_slot, default_state_path
 
 STATIC = ROOT / "inventory" / "static"
 
@@ -49,7 +51,13 @@ def display(value, fallback="Not recorded") -> str:
 
 
 class InventoryWebApp:
-    def __init__(self, database=DEFAULT_DB, *, p1s_telemetry_enabled: bool | None = None):
+    def __init__(
+        self,
+        database=DEFAULT_DB,
+        *,
+        p1s_telemetry_enabled: bool | None = None,
+        telemetry_path: Path | None = None,
+    ):
         self.database = Path(database)
         self.queries = InventoryQueries(self.database)
         self.receiving = ReceiveSpoolWorkflow(self.database)
@@ -64,6 +72,7 @@ class InventoryWebApp:
             if p1s_telemetry_enabled is None
             else bool(p1s_telemetry_enabled)
         )
+        self.telemetry_store = AtomicTelemetryStore(telemetry_path or default_state_path())
 
     def response(
         self, target: str, *, method: str = "GET", form: dict[str, str] | None = None,
@@ -71,6 +80,14 @@ class InventoryWebApp:
         url = urlsplit(target)
         if url.path.startswith("/static/"):
             return self._static(url.path)
+        if method.upper() == "GET" and url.path == "/api/print-watch/status" and self.p1s_telemetry_enabled:
+            snapshot = self.telemetry_store.read().with_freshness()
+            content = (json.dumps(snapshot.as_dict(), sort_keys=True) + "\n").encode("utf-8")
+            return 200, [
+                ("Content-Type", "application/json; charset=utf-8"),
+                ("Content-Length", str(len(content))),
+                ("Cache-Control", "no-store"),
+            ], content
         try:
             body, status = self._route(
                 method.upper(), url.path, parse_qs(url.query), form or {}
@@ -210,7 +227,7 @@ class InventoryWebApp:
         if path == "/projects":
             return self._projects(), 200
         if path == "/integrations/p1s" and self.p1s_telemetry_enabled:
-            return self._p1s_telemetry_placeholder(), 200
+            return self._p1s_telemetry_status(), 200
         match = re.fullmatch(r"/orders/(\d+)/receive", path)
         if match:
             return self._order_receipt_form(int(match.group(1))), 200
@@ -2277,7 +2294,7 @@ class InventoryWebApp:
                              f'<div>{status}</div></li>')
             units.append(f'<article class="ams-unit"><div class="product-title"><div><p class="eyebrow">Equipment</p>'
                          f'<h2>{esc(unit["name"])}</h2></div><span class="status neutral">Read only</span></div>'
-                         f'<ol>{''.join(slots)}</ol></article>')
+                         f"<ol>{''.join(slots)}</ol></article>")
         content = f"""<div class="notice"><strong>Verified assignments only</strong>
           <p>AMS slots show only committed physical assignments. Historical assumptions were not imported.</p>
           <p><a class="primary-link" href="/inventory/filament/ams/initialize">
@@ -2301,20 +2318,48 @@ class InventoryWebApp:
             description="This module is not active in the read-only dashboard checkpoint.",
         )
 
-    def _p1s_telemetry_placeholder(self) -> str:
+    def _p1s_telemetry_status(self) -> str:
+        status = self.telemetry_store.read().with_freshness()
+        comparison = compare_reported_slot(
+            status,
+            maintenance_restricted=(status.active_ams_unit == 1 and status.active_ams_slot == 2),
+        )
+        mode_class = "warning" if status.display_mode in {"OFFLINE", "STALE"} else ""
+        demo = (
+            f'<div class="notice warning"><strong>{esc(status.demo_label)}</strong>'
+            '<p>Fixture values are test data and are never live printer facts.</p></div>'
+            if status.display_mode == "DEMO" else ""
+        )
+        slot_match = comparison["match_confidence"].upper()
+        warning = status.warning_text or status.warning_code or "None reported"
+        temperatures = (
+            f'Nozzle {display(status.nozzle_actual_c, "N/A")} / {display(status.nozzle_target_c, "N/A")} C; '
+            f'Bed {display(status.bed_actual_c, "N/A")} / {display(status.bed_target_c, "N/A")} C'
+        )
         return self._shell(
             "P1S Live Status",
-            """<section class="page-heading"><div><p class="eyebrow">Read-only integration preview</p>
-            <h1>P1S Live Status</h1><p>The display foundation is enabled, but no live printer
-            connection has been configured or claimed.</p></div></section>
-            <div class="notice warning"><strong>Offline / unknown</strong>
-            <p>No authenticated observation is available. Device reports can never rewrite THS
-            inventory assignments, quantities, equipment identity, or production history.</p></div>
-            <section class="panel"><h2>Planned live fields</h2><p>Printer state, job, progress,
-            remaining time, layers, nozzle and bed temperatures, observed AMS/slot and filament,
-            warnings, errors, last update, and stale-data status.</p></section>""",
+            f"""<section class="page-heading"><div><p class="eyebrow">Sanitized read-only telemetry</p>
+            <h1>THS Print Watch</h1><p>Provider-independent status with no printer controls and no inventory writes.
+            No live printer connection has been configured or claimed.</p>
+            </div><div class="status-pill">{esc(status.display_mode)}</div></section>
+            {demo}<div class="notice {mode_class}"><strong>{('Offline / unknown' if status.display_mode == 'OFFLINE' else esc(status.connection_state.upper()) + ' / ' + esc(status.printer_state.upper()))}</strong>
+            <p>Source health: {esc(status.source_health)}. Control capability: disabled.</p></div>
+            <section class="panel"><h2>Current sanitized status</h2><dl class="detail-grid">
+            <div><dt>Job / plate</dt><dd>{display(status.current_job_name, "Not reported")} / {display(status.current_plate_name, "Not reported")}</dd></div>
+            <div><dt>Progress / remaining</dt><dd>{display(status.progress_percent, "N/A")}% / {esc(status.remaining_formatted)}</dd></div>
+            <div><dt>Layer</dt><dd>{display(status.current_layer, "N/A")} / {display(status.total_layers, "N/A")}</dd></div>
+            <div><dt>Temperatures</dt><dd>{temperatures}</dd></div>
+            <div><dt>AMS / slot</dt><dd>{display(status.active_ams_unit, "N/A")} / {display(status.active_ams_slot, "N/A")}</dd></div>
+            <div><dt>Filament</dt><dd>{display(status.filament_type, "Not reported")} / {display(status.filament_color, "Not reported")}</dd></div>
+            <div><dt>AMS humidity</dt><dd>A: {display(status.ams_1_humidity, "N/A")}% / B: {display(status.ams_2_humidity, "N/A")}%</dd></div>
+            <div><dt>Warning</dt><dd>{esc(warning)}</dd></div>
+            <div><dt>Inventory match</dt><dd>{esc(slot_match)}{(' / MAINTENANCE RESTRICTED' if comparison['maintenance_restriction'] else '')}</dd></div>
+            <div><dt>Freshness</dt><dd>{display(status.data_age_seconds, "N/A")} seconds / {esc(status.last_gateway_update or 'No update')}</dd></div>
+            </dl></section>
+            <div class="notice"><strong>Observation is not inventory truth</strong><p>Telemetry never assigns a spool,
+            changes quantity, records consumption, creates a purchase, or modifies production history.</p></div>""",
             '<a href="/">Dashboard</a> / <span aria-current="page">P1S Live Status</span>',
-            description="Disabled-by-default read-only P1S telemetry placeholder.",
+            description="Disabled-by-default sanitized Maeve telemetry view.",
         )
 
     def _not_found(self) -> str:

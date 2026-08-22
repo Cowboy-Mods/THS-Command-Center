@@ -20,6 +20,19 @@ and less stable than the deliberately bounded local client.
 
 No setting or connection was changed during this checkpoint.
 
+## Current unlocked observation — 2026-08-20
+
+| Fact | Observation |
+| --- | --- |
+| Observed P1S IP | Private local value omitted from Git |
+| LAN Mode observed | `OFF` |
+| DHCP reservation | `NOT YET COMPLETED` |
+| Status | `CURRENT OBSERVATION, NOT LOCKED` |
+
+This temporary address is documentation only. It is not an authoritative
+configuration value and must not be used to activate telemetry. The printer
+remains cloud-bound through Bambu Studio.
+
 ## Current proven state
 
 | Fact | Value |
@@ -27,7 +40,7 @@ No setting or connection was changed during this checkpoint.
 | Printer | THS Printer, Bambu Lab P1S / `PF001-U` |
 | Serial | `01P00C511401400` |
 | Firmware | `01.10.00.00` |
-| IPv4 | `192.168.5.226` on both printer and eero |
+| IPv4 | Matching private local value verified on printer and router |
 | Wi-Fi MAC | `94:A9:90:21:16:04` on both printer and eero |
 | LAN Only Mode | Off |
 | Developer Mode | Not shown |

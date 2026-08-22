@@ -1,0 +1,16 @@
+{
+  "offline": {"connection_state":"offline","printer_state":"offline","source_health":"not_configured"},
+  "idle": {"connection_state":"online","printer_state":"idle","progress_percent":0,"source_health":"healthy"},
+  "heating": {"connection_state":"online","printer_state":"heating","nozzle_actual_c":72,"nozzle_target_c":220,"bed_actual_c":31,"bed_target_c":55,"source_health":"healthy"},
+  "printing_normally": {"connection_state":"online","printer_state":"printing","current_job_name":"DEMO BENCHY","current_plate_name":"PLATE 1","progress_percent":42,"remaining_seconds":2220,"current_layer":84,"total_layers":200,"nozzle_actual_c":220,"nozzle_target_c":220,"bed_actual_c":55,"bed_target_c":55,"active_ams_unit":1,"active_ams_slot":1,"filament_type":"PLA","filament_color":"ORANGE","ams_1_humidity":18,"ams_2_humidity":22,"source_health":"healthy"},
+  "paused": {"connection_state":"online","printer_state":"paused","current_job_name":"DEMO PAUSED JOB","progress_percent":51,"remaining_seconds":1800,"warning_text":"USER ATTENTION REQUIRED","source_health":"healthy"},
+  "finished": {"connection_state":"online","printer_state":"finished","current_job_name":"DEMO FINISHED JOB","progress_percent":100,"remaining_seconds":0,"source_health":"healthy"},
+  "printer_error": {"connection_state":"online","printer_state":"error","warning_code":"DEMO-ERROR","warning_text":"TEST PRINTER ERROR","source_health":"degraded"},
+  "network_stale": {"connection_state":"offline","printer_state":"printing","current_job_name":"DEMO STALE JOB","progress_percent":67,"remaining_seconds":900,"source_health":"source_unavailable"},
+  "ams_1_active": {"connection_state":"online","printer_state":"printing","active_ams_unit":1,"active_ams_slot":3,"filament_type":"PLA","filament_color":"WHITE","source_health":"healthy"},
+  "ams_2_active": {"connection_state":"online","printer_state":"printing","active_ams_unit":2,"active_ams_slot":4,"filament_type":"PETG","filament_color":"BLACK","source_health":"healthy"},
+  "filament_runout": {"connection_state":"online","printer_state":"paused","active_ams_unit":1,"active_ams_slot":2,"warning_code":"DEMO-RUNOUT","warning_text":"TEST FILAMENT RUNOUT","source_health":"degraded"},
+  "low_remaining_time": {"connection_state":"online","printer_state":"printing","current_job_name":"DEMO NEARLY DONE","progress_percent":98,"remaining_seconds":120,"current_layer":198,"total_layers":200,"source_health":"healthy"},
+  "eight_slot_summary": {"connection_state":"online","printer_state":"idle","active_ams_unit":2,"active_ams_slot":1,"filament_type":"PLA","filament_color":"ORANGE","ams_1_humidity":19,"ams_2_humidity":21,"source_health":"healthy"},
+  "unknown_values": {"connection_state":"unknown","printer_state":"unknown","source_health":"data_unavailable"}
+}

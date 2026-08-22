@@ -108,6 +108,51 @@ function Get-VerifiedTHSProcess {
     return $process
 }
 
+function Get-VerifiedTHSListenerProcess {
+    $listeners = @(Get-NetTCPConnection -LocalAddress $expectedHost `
+        -LocalPort $expectedPort -State Listen -ErrorAction SilentlyContinue)
+    if ($listeners.Count -eq 0) {
+        return $null
+    }
+
+    $owners = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
+    if ($owners.Count -ne 1) {
+        throw "Safety check failed: port $expectedPort has multiple listener owners. Nothing was stopped."
+    }
+
+    $process = Get-Process -Id ([int]$owners[0]) -ErrorAction SilentlyContinue
+    if (-not $process) {
+        throw "Safety check failed: the port $expectedPort listener process could not be inspected. Nothing was stopped."
+    }
+
+    $processDetails = Get-CimInstance Win32_Process -Filter "ProcessId = $($process.Id)"
+    $commandLine = [string]$processDetails.CommandLine
+    $normalizedCommandLine = $commandLine.Replace('"', '')
+    $sameExecutable = (
+        $process.Path -and
+        [System.IO.Path]::GetFileName($process.Path) -ieq "python.exe"
+    )
+    $sameCommandLine = (
+        $normalizedCommandLine -and
+        $normalizedCommandLine.Contains($bootstrapPath) -and
+        $normalizedCommandLine.Contains("--database $databasePath") -and
+        $normalizedCommandLine.Contains("serve --host $expectedHost --port $expectedPort")
+    )
+    $sameApplication = Test-Path -LiteralPath $expectedApplicationPath -PathType Leaf
+    $ownsExpectedListener = $listeners | Where-Object {
+        $_.OwningProcess -eq $process.Id
+    }
+
+    if (-not (
+        $sameExecutable -and $sameCommandLine -and
+        $sameApplication -and $ownsExpectedListener
+    )) {
+        throw "Safety check failed: the port $expectedPort listener is not the approved THS Dashboard. Nothing was stopped."
+    }
+
+    return $process
+}
+
 function Remove-StaleTHSRecord {
     $record = Read-THSProcessRecord
     if (-not $record) {
@@ -133,18 +178,30 @@ if ($Action -eq "status") {
 
 if ($Action -eq "stop") {
     $record = Read-THSProcessRecord
-    if (-not $record) {
-        Write-Host "THS Dashboard is not running. Nothing was stopped."
-        exit 0
+    $process = $null
+    if ($record) {
+        $process = Get-VerifiedTHSProcess $record
     }
-    $process = Get-VerifiedTHSProcess $record
-    if (-not $process) {
+    if ($record -and -not $process) {
         Remove-Item -LiteralPath $pidFile -Force
         Write-Host "The recorded THS Dashboard process is no longer running."
+    }
+    if (-not $process) {
+        $process = Get-VerifiedTHSListenerProcess
+    }
+    if (-not $process) {
+        Write-Host "THS Dashboard is not running. Nothing was stopped."
         exit 0
     }
     Stop-Process -Id $process.Id -ErrorAction Stop
     Wait-Process -Id $process.Id -ErrorAction SilentlyContinue
+    $stillRunning = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+    $stillListening = Get-NetTCPConnection -LocalAddress $expectedHost `
+        -LocalPort $expectedPort -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.OwningProcess -eq $process.Id }
+    if ($stillRunning -or $stillListening) {
+        throw "THS Dashboard process $($process.Id) did not stop cleanly."
+    }
     Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
     Write-Host "Stopped THS Dashboard process $($process.Id)."
     exit 0

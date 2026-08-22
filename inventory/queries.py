@@ -104,10 +104,25 @@ class InventoryQueries:
             totals["printer"] = self._printer_status(db)
             totals["pending_orders"] = [
                 dict(row) for row in db.execute(
-                    """SELECT id,order_number,supplier,description,expected_quantity,
+                    """SELECT * FROM (
+                    SELECT id,order_number,supplier,description,expected_quantity,
                     received_quantity,unit_label,material,color,state,ordered_at,updated_at
                     FROM orders WHERE state IN ('ordered','shipped','delivered')
-                    ORDER BY updated_at DESC,id DESC LIMIT 4"""
+                    UNION ALL
+                    SELECT po.id,po.purchase_number,pv.name,
+                    group_concat(
+                      pol.description || ' (' || pol.quantity_ordered || ' ' ||
+                      pol.unit_label || ' expected)', '; '
+                    ),
+                    CAST(SUM(CAST(pol.quantity_ordered AS REAL)) AS TEXT),'0','items',
+                    NULL,NULL,po.status,po.purchase_date,po.updated_at
+                    FROM purchase_orders po
+                    JOIN purchase_vendors pv ON pv.id=po.vendor_id
+                    JOIN purchase_order_lines pol ON pol.purchase_order_id=po.id
+                    WHERE po.status IN ('ordered','shipped','delivered')
+                    GROUP BY po.id,po.purchase_number,pv.name,po.status,
+                    po.purchase_date,po.updated_at
+                    ) ORDER BY updated_at DESC,id DESC LIMIT 4"""
                 )
             ]
             totals["recent_activity"] = [

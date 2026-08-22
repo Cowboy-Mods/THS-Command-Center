@@ -4,7 +4,7 @@ import socket
 import ssl
 import struct
 import time
-from typing import Callable
+from typing import Callable, MutableMapping
 
 from .telemetry import P1STelemetryConfig
 
@@ -12,13 +12,22 @@ from .telemetry import P1STelemetryConfig
 class SubscribeOnlyConnectionError(RuntimeError):
     """A bounded subscribe-only observation could not be completed."""
 
-    def __init__(self, category: str, message: str, *, mqtt_code: int | None = None):
+    def __init__(
+        self,
+        category: str,
+        message: str,
+        *,
+        mqtt_code: int | None = None,
+        stage: str = "configuration",
+    ):
         super().__init__(message)
         self.category = category
         self.mqtt_code = mqtt_code
+        self.stage = stage
 
     def safe_summary(self) -> dict[str, object]:
         return {
+            "stage": self.stage,
             "category": self.category,
             "message": str(self),
             "mqtt_code": self.mqtt_code,
@@ -31,6 +40,7 @@ def capture_one_report(
     timeout_seconds: float = 20.0,
     connection_factory: Callable[..., socket.socket] = socket.create_connection,
     tls_context_factory: Callable[[], ssl.SSLContext] | None = None,
+    diagnostics: MutableMapping[str, object] | None = None,
 ) -> str:
     """Authenticate, subscribe to one report topic, and never publish a message."""
     if not config.enabled or not config.host or not config.serial or not config.access_code:
@@ -43,12 +53,25 @@ def capture_one_report(
         )
     topic = f"device/{config.serial}/report"
     deadline = time.monotonic() + timeout_seconds
+    stage = "tcp_connect"
+    safe_diagnostics = diagnostics if diagnostics is not None else {}
+    safe_diagnostics.update(
+        tcp_result="not_attempted",
+        tls_result="not_attempted",
+        tls_version=None,
+        tls_cipher=None,
+        connack_result="not_received",
+        suback_result="not_received",
+        telemetry_received=False,
+        mqtt_publishes_sent=0,
+    )
     raw = tls = None
     try:
         try:
             raw = connection_factory(
                 (config.host, config.port), timeout=min(5, timeout_seconds)
             )
+            safe_diagnostics["tcp_result"] = "accepted"
         except (TimeoutError, socket.timeout) as exc:
             raise SubscribeOnlyConnectionError(
                 "timeout", "MQTT broker connection timed out"
@@ -57,51 +80,74 @@ def capture_one_report(
             raise SubscribeOnlyConnectionError(
                 "broker_unavailable", "MQTT broker is unavailable"
             ) from exc
+        stage = "tls_handshake"
         context = (tls_context_factory or _local_tls_context)()
         try:
             tls = context.wrap_socket(raw, server_hostname=config.host)
+            safe_diagnostics["tls_result"] = "established"
+            version = getattr(tls, "version", None)
+            cipher = getattr(tls, "cipher", None)
+            safe_diagnostics["tls_version"] = version() if callable(version) else None
+            cipher_value = cipher() if callable(cipher) else None
+            safe_diagnostics["tls_cipher"] = cipher_value[0] if cipher_value else None
         except (ssl.SSLError, OSError) as exc:
+            safe_diagnostics["tls_result"] = "failed"
             raise SubscribeOnlyConnectionError(
-                "tls_failure", "encrypted MQTT negotiation failed"
+                "tls_failure", "encrypted MQTT negotiation failed", stage=stage
             ) from exc
+        stage = "mqtt_connect"
         _send(tls, _connect_packet(config.serial, config.access_code))
+        stage = "connack_wait"
         packet_type, _, body = _read_packet(tls, deadline)
         if packet_type != 2 or len(body) != 2:
             raise SubscribeOnlyConnectionError(
-                "protocol_error", "printer returned an invalid MQTT CONNACK"
+                "protocol_error", "printer returned an invalid MQTT CONNACK", stage=stage
             )
         if body[1] != 0:
-            raise _connack_error(body[1])
+            safe_diagnostics["connack_result"] = "rejected"
+            error = _connack_error(body[1])
+            error.stage = stage
+            raise error
+        safe_diagnostics["connack_result"] = "accepted"
+        stage = "mqtt_subscribe"
         _send(tls, _subscribe_packet(topic))
         subscribed = False
         while True:
+            stage = "suback_wait" if not subscribed else "telemetry_wait"
             packet_type, flags, body = _read_packet(tls, deadline)
             if packet_type == 9:
                 if len(body) < 3 or body[:2] != b"\x00\x01" or body[2] == 0x80:
+                    safe_diagnostics["suback_result"] = "rejected"
                     raise SubscribeOnlyConnectionError(
                         "subscription_rejected",
                         "printer rejected the status-report subscription",
                         mqtt_code=body[2] if len(body) >= 3 else None,
+                        stage=stage,
                     )
                 subscribed = True
+                safe_diagnostics["suback_result"] = "accepted"
+                deadline = min(deadline, time.monotonic() + 20.0)
                 continue
             if packet_type == 3 and subscribed:
                 received_topic, payload = _publish_contents(flags, body)
                 if received_topic == topic:
+                    safe_diagnostics["telemetry_received"] = True
                     return payload.decode("utf-8")
-    except SubscribeOnlyConnectionError:
+    except SubscribeOnlyConnectionError as exc:
+        if exc.stage == "configuration":
+            exc.stage = stage
         raise
     except (TimeoutError, socket.timeout) as exc:
         raise SubscribeOnlyConnectionError(
-            "timeout", "subscribe-only capture timed out"
+            "timeout", "subscribe-only capture timed out", stage=stage
         ) from exc
     except UnicodeDecodeError as exc:
         raise SubscribeOnlyConnectionError(
-            "protocol_error", "printer returned non-UTF-8 status data"
+            "protocol_error", "printer returned non-UTF-8 status data", stage=stage
         ) from exc
     except OSError as exc:
         raise SubscribeOnlyConnectionError(
-            "connection_lost", "encrypted subscribe-only connection was lost"
+            "connection_lost", "encrypted subscribe-only connection was lost", stage=stage
         ) from exc
     finally:
         if tls is not None:
@@ -122,6 +168,8 @@ def capture_one_report(
 
 def _local_tls_context() -> ssl.SSLContext:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.maximum_version = ssl.TLSVersion.TLSv1_2
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     return context

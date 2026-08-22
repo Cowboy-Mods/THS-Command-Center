@@ -1,0 +1,6 @@
+# Maeve private runtime dependency for standards-compliant Web Push.
+pywebpush==2.4.0
+# Standards-compliant offline MQTT diagnostics; the live Farm Manager bridge does not use it.
+paho-mqtt==2.1.0
+# Windows does not ship the IANA timezone database used by ZoneInfo.
+tzdata==2025.2

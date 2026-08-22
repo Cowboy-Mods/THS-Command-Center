@@ -71,6 +71,11 @@ db.sqlite3-journal
 /screenshots/
 /evidence/
 
+# Local repair and diagnostic artifacts are never source.
+*.backup-*
+*_backup_*
+/.paho-diagnostic-wheels/
+
 # Flask stuff:
 instance/
 .webassets-cache
