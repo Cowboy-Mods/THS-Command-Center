@@ -1,0 +1,32 @@
+{
+  "windows": {
+    "python_executable": "C:/PATH/TO/python.exe",
+    "codex_executable": "C:/PATH/TO/codex.exe"
+  },
+  "runtime": {
+    "root": "C:/PATH/TO/THS-Command-Center/maeve/voice-runtime"
+  },
+  "wsl": {
+    "stt_distribution": "Maeve-STT",
+    "stt_python": "/opt/maeve-stt/venv/bin/python",
+    "stt_worker_path": "/mnt/c/PATH/TO/maeve/voice-runtime/worker/stt_worker.py",
+    "stt_model_path": "/srv/maeve-stt/models/LOCAL_MODEL_DIRECTORY",
+    "qwen_distribution": null,
+    "qwen_python": null,
+    "qwen_worker_path": null,
+    "qwen_model_path": null,
+    "qwen_voice_identity_path": null
+  },
+  "microphone": {
+    "approved_label": "PUBLIC FRIENDLY MICROPHONE LABEL",
+    "approved_selector": "EXACT LOCAL BROWSER DEVICE LABEL"
+  },
+  "diagnostics": {
+    "fixed_wav_path": null
+  },
+  "network": {
+    "broker_host": "127.0.0.1",
+    "broker_port": 48177,
+    "reserved_test_port": 48178
+  }
+}

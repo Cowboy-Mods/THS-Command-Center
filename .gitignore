@@ -220,6 +220,25 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Maeve headset voice local-only configuration and runtime state
+/maeve/voice-runtime/config.local.json
+/maeve/voice-runtime/.local/
+/maeve/voice-runtime/models/
+/maeve/voice-runtime/wheels/
+/maeve/voice-runtime/packages/
+/maeve/voice-runtime/evidence/
+/maeve/voice-runtime/logs/
+/maeve/voice-runtime/*usage-counts.json
+/maeve/voice-runtime/**/*credential-export*
+/maeve/voice-runtime/**/*.safetensors
+/maeve/voice-runtime/**/*.onnx
+/maeve/voice-runtime/**/*.pt
+/maeve/voice-runtime/**/*.pth
+/maeve/voice-runtime/**/*.whl
+/maeve/voice-runtime/**/*.deb
+/maeve/voice-runtime/**/*.vhdx
+/maeve/voice-runtime/**/*.tar
+
 # Ruff stuff:
 .ruff_cache/
 
