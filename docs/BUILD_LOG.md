@@ -49,7 +49,7 @@
 
 ## 2026-07-27 — First Equipment Registry onboarding
 
-- Registered Cowboy's Bambu Lab P1S as `THS-EQP-000001` through the signed,
+- Registered the operator's Bambu Lab P1S as `THS-EQP-000001` through the signed,
   zero-write-preview Equipment Registry workflow.
 - Recorded one installed/operating 3D-printer record with verified ownership,
   purchase date, THS print-room location, Wi-Fi support, AMS support, and notes.
@@ -319,15 +319,15 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Focused correction/service/UI tests passed: 26.
 - Full regression suite passed: 321.
 - Production SHA-256 remained
-  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`;
+  `<PRODUCTION_DATABASE_SHA256>`;
   schema remained 18, integrity was `ok`, and foreign-key violations were zero.
 - Production Migration 019 and the spool correction were not applied.
 # 2026-07-28 — Migration 019 production deployment readiness
 
-- Captured Cowboy's physical confirmations for the later 032/039 correction.
+- Captured the operator's physical confirmations for the later 032/039 correction.
 - Reverified production read-only at schema 18 with integrity `ok`, zero
   foreign-key violations, and SHA-256
-  `3BF3F098CC1D779E81489BED64B4D654C5836E1E2B75A248CDEA5676B8FFC99A`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 - Created and verified a byte-matched external rollback backup.
 - Rehearsed only Migration 019 on a verified production copy: candidate reached
   schema 19; all 75 protected table fingerprints and both target spools remained
@@ -347,7 +347,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Applied only `019_flexible_spool_replacement.sql`; production advanced
   exactly 18 to 19.
 - Production after SHA-256:
-  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 - All 75 protected content fingerprints, both target spools, equipment,
   telemetry, and workflow row counts remained unchanged.
 - Post-deployment integrity and quick checks were `ok`; foreign-key violations
@@ -375,9 +375,9 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - All 69 unrelated protected table fingerprints remained unchanged; integrity
   remained `ok` and foreign-key violations remained zero.
 - Production SHA-256 changed only for the authorized correction from
-  `5820C87D6812EB0699686CB958DBA1B2464C8E022A88F93E257179FEC51B0C52`
+  `<PRE_CORRECTION_DATABASE_SHA256>`
   to
-  `D50AA7C4F437FE7717F04DFF5F34448EB38C209C7BA2C23F8D0B2CB1DB637091`.
+  `<POST_CORRECTION_DATABASE_SHA256>`.
 - Focused tests passed: 34. Full regression passed: 321.
 - Dashboard and guided replacement routes returned HTTP 200 with zero writes.
 # 2026-07-29 — Source-only filament swatch repair
@@ -393,18 +393,19 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   68. Full regression suite passed: 328.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 
 - No production data or schema changed. Deployment remains blocked pending
   explicit approval.
 # 2026-07-29 — Filament swatch production deployment
 
-- Reverified and stopped only the separately authorized untracked PID 15960;
-  the verified production PID 37188 remained undisturbed during listener
+- Reverified and stopped only the separately authorized untracked PID
+  `<UNTRACKED_DASHBOARD_PID>`; the verified production PID
+  `<PRODUCTION_DASHBOARD_PID>` remained undisturbed during listener
   cleanup.
 - Reran every deployment gate against source commit
   `8ea3c5c58a7d366a32215065303f1d9e053e2b76`.
-- Restarted only the verified dashboard server as PID 58064 using the explicit
+- Restarted only the verified dashboard server as PID `<PRODUCTION_DASHBOARD_PID>` using the explicit
   production database and deliberately skipped the migration command.
 - Live dashboard validation confirmed Purple `#800080`, Hot Pink `#ef8cab`,
   Cocoa Brown `#79533a`, and the intentional Black/Purple two-color gradient.
@@ -413,7 +414,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Focused dashboard tests passed: 35. Full regression suite passed: 328.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 - Main and all protected production records remained untouched.
 # 2026-07-29 — AMS 2 Pro zero-write onboarding preview
 
@@ -431,14 +432,14 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Focused equipment/inventory suites passed: 115. Full regression passed: 335.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 - No production write, schema change, telemetry work, health-module work,
   equipment onboarding, or Main change occurred.
 # 2026-07-29 — Physically confirmed AMS preview revision
 
 - Replaced the reported AMS serials with confirmed exact values
-  `19C06A522002297` and `19C51A620400EWR`; added confirmed P1S serial
-  `01P00C511401400`.
+  `<AMS_1_SERIAL>` and `<AMS_2_SERIAL>`; added confirmed P1S serial
+  `<PRINTER_SERIAL>`.
 - Confirmed the seven stored slot assignments match physical occupancy.
   Stored `cyan` and `Jade White` remain unchanged as compatible product names
   for physical Blue and White.
@@ -455,7 +456,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Both port-8787 listeners were reinspected read-only and left untouched.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 # 2026-07-29 — AMS Slot 2 maintenance clarification
 
 - Kept Slot 2/A2 as an existing slot under `THS-EQP-000002`; no independent
@@ -474,7 +475,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   onboarding service checkpoint and explicit authorization.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 
 # 2026-07-29 - AMS Slot 2 feeder candidate preview
 
@@ -495,7 +496,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   Full regression passed: 339.
 - Production remained schema 19 with integrity `ok`, zero foreign-key
   violations, and unchanged SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 
 # 2026-07-30 - Atomic AMS onboarding service
 
@@ -511,7 +512,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   child writes plus a postcondition failure.
 - Rehearsed against disposable byte copies of production. Every rollback copy
   restored SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`;
+  `<PRODUCTION_DATABASE_SHA256>`;
   the successful candidate produced 29/2/0, integrity `ok`, and zero foreign
   key violations.
 - Dedicated service/command tests passed: 11. Focused suites passed: 123.
@@ -526,9 +527,9 @@ This work belongs under the THS Command Center / room monitor project. The goal 
 - Verified clean synchronized source commit
   `5461fe83346fb785fcca5933f9a875bc2717b4c7`, schema 19, integrity `ok`,
   zero foreign-key violations, and pre-onboarding SHA-256
-  `2C5B3EF08BA222793B494E4B601C44FA88AA34C7CBA24331050C0BB70F90671C`.
+  `<PRODUCTION_DATABASE_SHA256>`.
 - Created and verified the byte-identical external rollback backup at
-  `C:\Users\Cowboy\Documents\THS-Command-Center-Data\backups\ams-onboarding\inventory-schema19-pre-ams-onboarding-20260730T041902-0400.sqlite3`.
+  `<LOCAL_APP_DATA>/backups/ams-onboarding/inventory-schema19-pre-ams-onboarding-<TIMESTAMP>.sqlite3`.
 - Ran the zero-write dry-run, then committed with the exact controlled phrase.
 - Service result: 29 inserts, 2 updates, 0 deletes at
   `2026-07-30T08:19:48Z`.
@@ -538,7 +539,7 @@ This work belongs under the THS Command Center / room monitor project. The goal 
   unchanged; A2 remains empty and restricted.
 - Verified no unrelated protected table changed, integrity `ok`, zero foreign
   key violations, and post-onboarding SHA-256
-  `3A9992C0337A11092780AC9F1B5E43126C03509A1EE749CC21679360DF3CFD28`.
+  `<POST_ONBOARDING_DATABASE_SHA256>`.
 - Dashboard, replacement, AMS, and maintenance routes returned HTTP 200 with
   zero database writes.
 - Focused suites passed: 123. Full regression passed: 350.
