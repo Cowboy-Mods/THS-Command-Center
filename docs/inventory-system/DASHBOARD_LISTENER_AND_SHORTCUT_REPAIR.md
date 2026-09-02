@@ -1,20 +1,20 @@
 # Dashboard Listener and Desktop Shortcut Repair
 
-Date: 2026-07-31  
-Branch: `feature/p1s-read-only-telemetry`  
-Production application PID: `58064`
+Date: 2026-07-31
+Branch: `feature/p1s-read-only-telemetry`
+Production application PID: `<PRODUCTION_DASHBOARD_PID>`
 
 ## Outcome
 
 The obsolete checkout-local dashboard was stopped through its own verified stop
 mechanism. Its PowerShell and CMD parents then exited naturally, and its stale
-PID marker was removed. PID `58064` remained uninterrupted and became the sole
+PID marker was removed. PID `<PRODUCTION_DASHBOARD_PID>` remained uninterrupted and became the sole
 listener on `127.0.0.1:8787`.
 
 The two Desktop shortcuts now resolve only to the permanent checkout:
 
-- `C:\Users\Cowboy\Documents\GitHub\THS-Command-Center\Start THS Dashboard.cmd`
-- `C:\Users\Cowboy\Documents\GitHub\THS-Command-Center\Stop THS Dashboard.cmd`
+- `<REPOSITORY_ROOT>/Start THS Dashboard.cmd`
+- `<REPOSITORY_ROOT>/Stop THS Dashboard.cmd`
 
 Neither replacement shortcut was launched during this checkpoint.
 
@@ -24,15 +24,16 @@ Immediately before termination, the verified chain was:
 
 | PID | Identity | Parent | Database / purpose |
 | --- | --- | --- | --- |
-| `60168` | `python.exe -m inventory.cli serve --host 127.0.0.1 --port 8787` | `65660` | obsolete worktree `var\inventory.sqlite3`, schema 8 |
-| `65660` | obsolete PowerShell launcher | `75372` | waited for PID 60168 and managed its PID marker |
-| `75372` | obsolete `Start THS Dashboard.cmd` | `10912` | launched by the old Desktop shortcut |
-| `58064` | isolated permanent-checkout bootstrap with explicit `--database` | `68012` | production schema-19 database |
+| `<OBSOLETE_SERVER_PID>` | `python.exe -m inventory.cli serve --host 127.0.0.1 --port 8787` | `<OBSOLETE_LAUNCHER_PID>` | obsolete worktree `var\inventory.sqlite3`, schema 8 |
+| `<OBSOLETE_LAUNCHER_PID>` | obsolete PowerShell launcher | `<OBSOLETE_CMD_PID>` | waited for the obsolete server and managed its PID marker |
+| `<OBSOLETE_CMD_PID>` | obsolete `Start THS Dashboard.cmd` | `<PARENT_PID>` | launched by the old Desktop shortcut |
+| `<PRODUCTION_DASHBOARD_PID>` | isolated permanent-checkout bootstrap with explicit `--database` | `<PRODUCTION_PARENT_PID>` | production schema-19 database |
 
 Both Python processes were independently proven to have listener handles for
 port 8787. The obsolete server was stopped only after executable, command line,
 parent chain, worktree, database, PID, and recorded process start time matched.
-PIDs `65660` and `75372` exited naturally. Production PID `58064` was never
+The obsolete launcher and command processes exited naturally. Production PID
+`<PRODUCTION_DASHBOARD_PID>` was never
 stopped, restarted, or signaled.
 
 The recurring launch source was the obsolete Desktop Start shortcut. The prior
@@ -43,12 +44,12 @@ entry, or other automatic startup source.
 
 The original shortcut bytes were copied and hash-verified before replacement:
 
-`C:\Users\Cowboy\Documents\THS-Command-Center-Data\shortcut-backups\listener-repair-20260731T164343-0400`
+`<LOCAL_APP_DATA>/shortcut-backups/listener-repair-<TIMESTAMP>`
 
 | Shortcut | Original and backup SHA-256 |
 | --- | --- |
-| Start | `E934F2D4E518A0536243CCA50FD5BCC3B8EACB4F386EC337DFA19B5E8EBD4675` |
-| Stop | `B1232C3EABAC4309EEC0F28FACA3FD35985DA56D5C51DC38DC75E2F731BFE322` |
+| Start | `<START_SHORTCUT_SHA256>` |
+| Stop | `<STOP_SHORTCUT_SHA256>` |
 
 Restore by copying those two backed-up `.lnk` files to the Desktop only if the
 obsolete launcher is intentionally needed for forensic review. Do not launch
@@ -84,15 +85,15 @@ implicit database paths, identifies itself as development, and never uses port
 
 ## Production validation
 
-- database: `C:\Users\Cowboy\Documents\THS-Command-Center-Data\inventory.sqlite3`
+- database: `<LOCAL_APP_DATA>/inventory.sqlite3`
 - schema: 19 (`019_flexible_spool_replacement.sql`)
 - integrity check: `ok`
 - quick check: `ok`
 - foreign-key violations: 0
 - SHA-256 before route checks:
-  `3A9992C0337A11092780AC9F1B5E43126C03509A1EE749CC21679360DF3CFD28`
+  `<PRODUCTION_DATABASE_SHA256>`
 - SHA-256 after route checks: identical
-- sole listener: PID `58064`, `127.0.0.1:8787`
+- sole listener: PID `<PRODUCTION_DASHBOARD_PID>`, `127.0.0.1:8787`
 - HTTP 200: dashboard, guided replacement, AMS, and maintenance routes
 - focused launcher/dashboard tests: 46 passed
 - complete regression suite: 367 passed in 706.018 seconds

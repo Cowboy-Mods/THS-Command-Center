@@ -1,7 +1,7 @@
 # P1S Connectivity-Mode Decision Checkpoint
 
-Date: 2026-07-31  
-Checkpoint type: zero-change decision and documentation  
+Date: 2026-07-31
+Checkpoint type: zero-change decision and documentation
 Branch: `feature/p1s-read-only-telemetry`
 
 ## Recommendation
@@ -11,7 +11,7 @@ telemetry connection. Retain the completed identity, credential-protection,
 subscribe-only client, sanitized diagnostics, telemetry normalization, and
 synthetic-test foundations offline.
 
-This is the safest choice that preserves Cowboy's normal Bambu Studio and Bambu
+This is the safest choice that preserves the operator's normal Bambu Studio and Bambu
 Handy experience. There is no documented, supported, public read-only API that
 gives Maeve the required live P1S status while keeping the present cloud-bound
 workflow unchanged. A reverse-engineered Bambu cloud connection would require a
@@ -37,11 +37,11 @@ remains cloud-bound through Bambu Studio.
 
 | Fact | Value |
 | --- | --- |
-| Printer | THS Printer, Bambu Lab P1S / `PF001-U` |
-| Serial | `01P00C511401400` |
-| Firmware | `01.10.00.00` |
+| Printer | THS Printer, Bambu Lab P1S / `<PRINTER_MODEL_TEXT>` |
+| Serial | `<PRINTER_SERIAL>` |
+| Firmware | `<PRINTER_FIRMWARE>` |
 | IPv4 | Matching private local value verified on printer and router |
-| Wi-Fi MAC | `94:A9:90:21:16:04` on both printer and eero |
+| Wi-Fi MAC | `<PRINTER_MAC>` on both printer and router |
 | LAN Only Mode | Off |
 | Developer Mode | Not shown |
 | Local-network-access option | Not shown |
@@ -90,12 +90,12 @@ Established reverse-engineered reference used only to characterize alternatives:
 | Bambu Handy away from home | Not available because the printer is disconnected from Bambu cloud. | Continues normally. | Continues normally. |
 | Cloud printing / MakerWorld | Disabled for the printer in LAN Only Mode. Local Studio sending remains the intended path. | Continues normally. | Continues normally. |
 | Remote camera and monitoring | Cloud/remote access is lost. A local third-party stream may be technically available in Developer Mode, but is unsupported and is not part of the THS client. | Official Bambu camera and monitoring continue. No safe supported Maeve feed was identified. | Official Bambu camera and monitoring continue; Maeve shows no live feed. |
-| Security | Printer stops using Bambu cloud, but Developer Mode deliberately exposes local MQTT, live stream, and FTP outside Authorization Control. Network isolation and trusted-LAN hygiene become Cowboy's responsibility. | Official Bambu authorization remains. Reverse-engineered cloud access would add a high-value account credential and private-cloud dependency, so it is not recommended. | Smallest additional attack surface: no Maeve connection and no new credential use. |
-| Reliability for Maeve | Best available direct local path once authorized, but unsupported and dependent on local Wi-Fi, DHCP identity, firmware behavior, and relaxed local access. | Official apps are reliable for Cowboy; no supported automation interface exists for Maeve. Screen/log scraping is brittle; reverse-engineered cloud MQTT can change without notice. | Offline fixtures, parsing, freshness rules, and UI contracts remain deterministic; live availability is intentionally absent. |
+| Security | Printer stops using Bambu cloud, but Developer Mode deliberately exposes local MQTT, live stream, and FTP outside Authorization Control. Network isolation and trusted-LAN hygiene become the operator's responsibility. | Official Bambu authorization remains. Reverse-engineered cloud access would add a high-value account credential and private-cloud dependency, so it is not recommended. | Smallest additional attack surface: no Maeve connection and no new credential use. |
+| Reliability for Maeve | Best available direct local path once authorized, but unsupported and dependent on local Wi-Fi, DHCP identity, firmware behavior, and relaxed local access. | Official apps are reliable for the operator; no supported automation interface exists for Maeve. Screen/log scraping is brittle; reverse-engineered cloud MQTT can change without notice. | Offline fixtures, parsing, freshness rules, and UI contracts remain deterministic; live availability is intentionally absent. |
 | Credential requirement | The printer's LAN access code, kept DPAPI-protected and used only in process memory. | Official apps retain their normal Bambu account session. Reverse-engineered cloud access would require a Bambu account token/identifier and is rejected for THS use. | No credential is read or used. Existing protected value may remain untouched. |
 | Support status | LAN Only and its toggle are official. Developer Mode is an official opt-in, but Bambu states the exposed MQTT/live-stream/FTP protocols are not officially supported. The THS MQTT contract is reverse-engineered. | Bambu Studio/Handy are official. Automated Studio/log scraping and direct cloud MQTT are reverse-engineered or unsupported; no public supported Maeve telemetry API was identified. | Fully within THS control; no claim of live Bambu integration. |
 | Normal workflow preserved | No. It materially changes Handy, cloud printing, and remote access. | Yes for official apps, but a safe direct Maeve feed is not presently available. | Yes. |
-| Overall decision | Viable only if Cowboy later accepts the cloud/Handy tradeoff and local-network risk. | Keep official applications, but do not attach Maeve through a reverse-engineered cloud shortcut. | **Recommended now.** |
+| Overall decision | Viable only if the operator later accepts the cloud/Handy tradeoff and local-network risk. | Keep official applications, but do not attach Maeve through a reverse-engineered cloud shortcut. | **Recommended now.** |
 
 ## Option 1: LAN Only plus Developer Mode
 
@@ -220,7 +220,7 @@ camera, or remote-monitoring change.
 
 ## Decision gate for any future live attempt
 
-A new live attempt requires Cowboy to choose and explicitly authorize one of:
+A new live attempt requires the operator to choose and explicitly authorize one of:
 
 1. accept LAN Only + Developer Mode tradeoffs and schedule an idle-printer
    maintenance window; or
@@ -252,7 +252,7 @@ Headquarters, health module, or Main branch was changed.
 Decision recorded: 2026-07-31
 Status: **Parked — preserved for a safe future restart, not abandoned**
 
-Cowboy's final decision for this phase is:
+The operator's final decision for this phase is:
 
 - keep the P1S cloud-bound;
 - keep LAN Only Mode off;
@@ -263,7 +263,8 @@ Cowboy's final decision for this phase is:
   available.
 
 The feature branch and its complete history remain preserved at
-`feature/p1s-read-only-telemetry`. They are deliberately not merged into Main.
+`feature/p1s-read-only-telemetry`. They are awaiting public-readiness validation
+and a separately authorized pull request into `main`.
 The protected credential remains outside Git and must not be accessed, tested,
 replaced, or removed as part of parking this work.
 
@@ -276,7 +277,7 @@ a live connection or credential check.
 
 The restart checkpoint must first revalidate:
 
-1. Cowboy still wants live P1S telemetry without sacrificing the normal Bambu
+1. The operator still wants live P1S telemetry without sacrificing the normal Bambu
    Studio, Bambu Handy, cloud-printing, camera, and remote-monitoring workflow.
 2. Bambu now provides a documented cloud-compatible, read-only integration, or
    an officially approved partner method suitable for Maeve.
@@ -290,7 +291,7 @@ The restart checkpoint must first revalidate:
 6. The offline adapter, telemetry normalization, freshness rules, synthetic
    broker tests, and zero-authoritative-write guarantees still pass on the
    current codebase.
-7. A bounded zero-publish test plan, rollback plan, and explicit Cowboy
+7. A bounded zero-publish test plan, rollback plan, and explicit operator
    authorization exist before the first live attempt.
 
 If no safe cloud-compatible method exists, leave this branch parked and make no

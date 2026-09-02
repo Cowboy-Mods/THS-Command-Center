@@ -1,7 +1,7 @@
 # Maeve Desktop Telemetry Foundation
 
 Date: 2026-08-21
-Host: Cowboy's Windows 11 desktop, temporarily
+Host: the operator's Windows 11 desktop, temporarily
 
 ## Current boundary
 
@@ -57,30 +57,30 @@ linking and printer credentials remain personal interactive gates.
 
 ## Post-BIOS procedure
 
-This computer has an **ASUS ROG STRIX X570-E GAMING** motherboard. On this board:
+This computer has a `<HOST_MOTHERBOARD_MODEL>` motherboard. On the verified host:
 
 1. Restart only when no print or other critical work can be disrupted.
-2. Press `Delete` or `F2` repeatedly during startup to enter ASUS UEFI.
+2. Press the motherboard vendor's setup key repeatedly during startup to enter UEFI.
 3. Press `F7` for Advanced Mode.
 4. Open **Advanced > CPU Configuration > SVM Mode**.
 5. Set **SVM Mode** to **Enabled**.
 6. Press `F10`, review that SVM is the intended change, and save/restart.
 
-ASUS menu wording can vary by motherboard and firmware. If `SVM Mode` is not in
+UEFI menu wording can vary by motherboard and firmware. If `SVM Mode` is not in
 that exact location, stop and identify the motherboard model before changing a
 different option.
 
 After Windows returns, open an elevated PowerShell and run the preflight:
 
-`& 'C:\Users\Cowboy\Documents\GitHub\THS-Command-Center\scripts\maeve-preflight.ps1'`
+`& '<REPOSITORY_ROOT>/scripts/maeve-preflight.ps1'`
 
-If WSL is still absent, Cowboy must explicitly authorize the administrator-run
+If WSL is still absent, the operator must explicitly authorize the administrator-run
 WSL installation and its required restart. After every gate passes, verify the
 installer without running it:
 
-`& 'C:\Users\Cowboy\Documents\GitHub\THS-Command-Center\scripts\resume-maeve-install.ps1'`
+`& '<REPOSITORY_ROOT>/scripts/resume-maeve-install.ps1'`
 
-Only while Cowboy is present, add `-InstallDocker` to open the interactive
+Only while the operator is present, add `-InstallDocker` to open the interactive
 official installer. Stop at Docker terms, restart, OctoEverywhere account, and
 private access-code entry gates. Do not enable Kubernetes or firewall ports.
 

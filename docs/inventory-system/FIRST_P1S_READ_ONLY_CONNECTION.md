@@ -1,12 +1,12 @@
 # First P1S Read-Only Connection Checkpoint
 
-Date: 2026-07-31  
+Date: 2026-07-31
 Status: **Blocked at MQTT authentication — no subscription established**
 Branch: `feature/p1s-read-only-telemetry`
 
 ## Checkpoint outcome
 
-After an eero restart, the printer screen, eero client record, and PC neighbor
+After a router restart, the printer screen, router client record, and PC neighbor
 resolution all agreed on the P1S identity. Two bounded encrypted MQTT connection
 attempts reached the printer, but the printer rejected the protected MQTT session
 before subscription. The second attempt followed a fresh private re-entry of the
@@ -24,17 +24,17 @@ was never copied, printed, logged, documented, or placed in a command line.
 | THS identity | `THS-EQP-000001` |
 | Printer name | THS Printer |
 | Manufacturer/model | Bambu Lab P1S |
-| Model text | `PF001-U` |
-| Serial | `01P00C511401400` |
-| Wi-Fi MAC | `94:A9:90:21:16:04` |
-| Printer network-screen IPv4 | `192.168.5.226` |
-| eero client IPv4 | `192.168.5.226` |
-| Router manufacturer | eero |
-| Router model | eero Max 7 |
+| Model text | `<PRINTER_MODEL_TEXT>` |
+| Serial | `<PRINTER_SERIAL>` |
+| Wi-Fi MAC | `<PRINTER_MAC>` |
+| Printer network-screen IPv4 | `<PRINTER_PRIVATE_IP>` |
+| Router client IPv4 | `<PRINTER_PRIVATE_IP>` |
+| Router manufacturer | `<ROUTER_MANUFACTURER>` |
+| Router model | `<ROUTER_MODEL>` |
 | Router client-list match | Yes; exact IP and MAC agreement |
-| Connection reported by eero | Living Room eero, 2.4 GHz, WPA3 |
+| Connection reported by router | `<ROUTER_NODE>`, 2.4 GHz, WPA3 |
 
-The LAN access code was visible to Cowboy but was deliberately not photographed,
+The LAN access code was visible to the operator but was deliberately not photographed,
 copied, or shared.
 
 ## Passive PC-side identification
@@ -42,12 +42,12 @@ copied, or shared.
 Only existing local state was inspected. No subnet scan, ping sweep, DNS-SD
 query, printer connection, or router change was performed.
 
-- A single-address reachability check to `192.168.5.226` succeeded.
-- Windows resolved `192.168.5.226` to `94:A9:90:21:16:04` on `Ethernet 2`.
+- A single-address reachability check to `<PRINTER_PRIVATE_IP>` succeeded.
+- Windows resolved `<PRINTER_PRIVATE_IP>` to `<PRINTER_MAC>` on `<HOST_NETWORK_ADAPTER>`.
 - Windows DNS cache: no Bambu, P1S, or THS Printer identity record.
-- PC address remained `192.168.7.8/22`; gateway remained `192.168.4.1`.
+- PC address remained `<HOST_PRIVATE_IP>/<HOST_PREFIX_LENGTH>`; gateway remained `<GATEWAY_PRIVATE_IP>`.
 - Bambu Studio visibly showed `THS Printer` and current Device/AMS status.
-- Bambu Studio PID `63924` had one established MQTT connection to a public cloud
+- Bambu Studio PID `<BAMBU_STUDIO_PID>` had one established MQTT connection to a public cloud
   address on port 8883 and no established private-LAN printer connection.
 - Existing private neighbor entries did not contain the verified printer MAC.
 
@@ -82,9 +82,9 @@ capture and were not persisted.
 ## THS inventory truth and comparison
 
 Production remained schema 19 with checksum
-`3A9992C0337A11092780AC9F1B5E43126C03509A1EE749CC21679360DF3CFD28`.
+`<PRODUCTION_DATABASE_SHA256>`.
 The authoritative Equipment Registry identity remains `THS-EQP-000001` with
-serial `01P00C511401400`. No inventory, AMS assignment, equipment, maintenance,
+serial `<PRINTER_SERIAL>`. No inventory, AMS assignment, equipment, maintenance,
 parts, telemetry, or audit row was changed.
 
 There is no derived live-versus-inventory comparison because there was no
@@ -109,7 +109,7 @@ as a second defense. Telemetry configuration can load the code directly from
 the protected store without placing it in a command-line argument or report.
 
 The real credential is present only in the external DPAPI store and decrypts for
-Cowboy's Windows account. The file ACL grants access only to Cowboy and SYSTEM.
+the local Windows account. The file ACL grants access only to `<LOCAL_USERNAME>` and SYSTEM.
 
 Validation results:
 
@@ -124,11 +124,11 @@ The reservation cannot yet be safely proposed.
 
 | Required field | Current result |
 | --- | --- |
-| Verified current P1S IP | `192.168.5.226` |
-| Verified MAC | `94:A9:90:21:16:04` |
-| Router make/model | eero / eero Max 7 |
+| Verified current P1S IP | `<PRINTER_PRIVATE_IP>` |
+| Verified MAC | `<PRINTER_MAC>` |
+| Router make/model | `<ROUTER_MANUFACTURER>` / `<ROUTER_MODEL>` |
 | Router DHCP range | Unknown |
-| Recommended reserved IP | `192.168.5.226`, contingent on eero range/availability validation |
+| Recommended reserved IP | `<PRINTER_PRIVATE_IP>`, contingent on router range/availability validation |
 | Confirmed safe/available | No — router configuration is unavailable |
 
 No router setting or reservation was changed.
@@ -141,15 +141,15 @@ No router setting or reservation was changed.
    setting before MQTT authentication is accepted.
 3. Do not retry authentication until that setting boundary is understood.
 4. Once authorized, use the existing protected credential and repeat one bounded
-   encrypted subscribe-only capture of `device/01P00C511401400/report`.
+   encrypted subscribe-only capture of `device/<PRINTER_SERIAL>/report`.
 5. If authentication succeeds but no natural report arrives, disconnect rather
    than publish a push-all request.
-6. Confirm the eero DHCP range and reservation availability, then produce a final
+6. Confirm the router DHCP range and reservation availability, then produce a final
    reservation preview. Do not apply it without separate authorization.
 
 ## Boundary confirmation
 
-Production PID `58064` was not stopped or restarted. Production port 8787,
+Production PID `<PRODUCTION_DASHBOARD_PID>` was not stopped or restarted. Production port 8787,
 database, schema, and records were untouched. Two bounded authentication attempts
 were rejected before subscription, as documented above. No P1S/AMS command,
 MQTT publish, router change, DHCP reservation, persistent telemetry write,

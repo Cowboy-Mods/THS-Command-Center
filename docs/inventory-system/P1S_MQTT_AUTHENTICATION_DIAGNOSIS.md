@@ -1,14 +1,14 @@
 # P1S MQTT Authentication Diagnosis
 
-Date: 2026-07-31  
-Checkpoint type: source-only and documentation-only  
+Date: 2026-07-31
+Checkpoint type: source-only and documentation-only
 Branch: `feature/p1s-read-only-telemetry`
 
 ## Conclusion
 
 The THS client's basic MQTT wire format matches the well-established local P1S
 protocol. The most likely cause of the two pre-subscription rejections is the
-printer's newer Authorization Control operating mode: firmware `01.10.00.00`
+printer's newer Authorization Control operating mode: firmware `<PRINTER_FIRMWARE>`
 may require LAN Only plus Developer Mode before a raw third-party MQTT client is
 authorized. This is a diagnosis, not permission to change either setting.
 
@@ -19,11 +19,11 @@ repair preserves and sanitizes that distinction for a future authorized test.
 
 ## Proven facts
 
-- Printer: THS Printer, Bambu Lab P1S / `PF001-U`.
-- Serial: `01P00C511401400`.
-- Firmware: `01.10.00.00`.
-- Network identity: `192.168.5.226` resolved by Windows to
-  `94:A9:90:21:16:04`, matching the printer and eero Max 7.
+- Printer: THS Printer, Bambu Lab P1S / `<PRINTER_MODEL_TEXT>`.
+- Serial: `<PRINTER_SERIAL>`.
+- Firmware: `<PRINTER_FIRMWARE>`.
+- Network identity: `<PRINTER_PRIVATE_IP>` resolved by Windows to
+  `<PRINTER_MAC>`, matching the printer and router.
 - TCP/TLS reached the printer twice on port 8883.
 - The printer returned MQTT CONNACK with a non-zero result before SUBSCRIBE.
 - The old diagnostic discarded the exact CONNACK return code.
@@ -42,7 +42,7 @@ repair preserves and sanitizes that distinction for a future authorized test.
 | Username | `bblp` | Matches established local-mode integrations. |
 | Password | Protected printer access code, unchanged bytes | Matches established local-mode integrations. Never logged or placed in arguments. |
 | Client ID | `ths-readonly-` plus final six serial characters | Valid MQTT 3.1.1 identifier. Community clients use arbitrary unique IDs; no evidence Bambu requires an official client ID. |
-| Report topic | `device/01P00C511401400/report` | Matches established reverse-engineered report topic. |
+| Report topic | `device/<PRINTER_SERIAL>/report` | Matches established reverse-engineered report topic. |
 | Request topic | Never constructed or used | Required THS safety boundary. |
 | Publish | No publish implementation | Proven by synthetic packet tests. |
 
@@ -57,7 +57,7 @@ MQTT, live stream, and FTP available to custom integrations:
 - https://cdn1.bambulab.com/trust-center/file/bambulab-security-whitepaper-en.pdf
 
 Official material does not publicly document the raw MQTT authentication wire
-contract or a firmware-`01.10.00.00` CONNACK matrix. Bambu directs integration
+contract or a firmware-`<PRINTER_FIRMWARE>` CONNACK matrix. Bambu directs integration
 developers to its partner channel for those technical details. Therefore the
 port, username, password, client-ID flexibility, and topic conclusions above are
 explicitly based on mature community/reverse-engineered references, including:
@@ -76,7 +76,7 @@ explicitly based on mature community/reverse-engineered references, including:
    but without the historical CONNACK code the diagnosis cannot distinguish a
    stale/wrong code (code 4) from an authorization policy refusal (code 5).
 3. **Firmware-specific client authorization — medium confidence.** Firmware
-   `01.10.00.00` is newer than Bambu's Authorization Control announcement. The
+   `<PRINTER_FIRMWARE>` is newer than Bambu's Authorization Control announcement. The
    public documentation does not expose its exact raw-client rules.
 4. **Client identifier rejected — low confidence.** The ID is valid MQTT 3.1.1
    and community clients commonly use arbitrary unique IDs. A future code-2
@@ -86,7 +86,7 @@ explicitly based on mature community/reverse-engineered references, including:
 
 ## Causes ruled out or substantially reduced
 
-- Wrong IP or wrong physical printer: ruled out by screen, eero, and PC MAC
+- Wrong IP or wrong physical printer: ruled out by screen, router, and PC MAC
   agreement.
 - Broker port unavailable: ruled out by two successful TCP/TLS handshakes.
 - TLS negotiation failure: ruled out for the historical attempts.
@@ -112,14 +112,14 @@ The safe result includes category, sanitized message, and numeric MQTT return
 code only. It never includes host credentials, credential length, credential
 hash, packet payloads, or exception details that could contain secrets.
 
-## Cowboy's read-only screen inspection
+## Operator's read-only screen inspection
 
 Do not change any toggle and do not photograph or share the access code.
 
 1. Wake the P1S and press the **gear / Settings** button.
 2. Open **WLAN** or **Network**.
-3. Confirm the connected Wi-Fi name and IPv4 `192.168.5.226`.
-4. Confirm the displayed MAC remains `94:A9:90:21:16:04`.
+3. Confirm the connected Wi-Fi name and IPv4 `<PRINTER_PRIVATE_IP>`.
+4. Confirm the displayed MAC remains `<PRINTER_MAC>`.
 5. Locate **LAN Only Mode** and report only `On` or `Off`. Do not touch it.
 6. Scroll down within the same WLAN screen. Locate **Developer Mode** or a
    similarly named local/developer-access option. Report `On`, `Off`, or
@@ -129,8 +129,8 @@ Do not change any toggle and do not photograph or share the access code.
    it is the code used for the private entry. Do not read it aloud, photograph
    it, refresh/rotate it, or send it anywhere.
 8. Return to **Settings**, open **Device**, **General**, or **Firmware** (label
-   varies), and confirm firmware `01.10.00.00` and serial
-   `01P00C511401400`.
+   varies), and confirm firmware `<PRINTER_FIRMWARE>` and serial
+   `<PRINTER_SERIAL>`.
 9. Exit without saving or changing anything.
 
 The only requested reply is:
@@ -140,7 +140,7 @@ LAN Only Mode: On / Off
 Developer Mode: On / Off / Not shown
 Local network access option: On / Off / Not shown
 Access code present and privately rechecked: Yes / No
-Firmware still 01.10.00.00: Yes / No
+Firmware still <PRINTER_FIRMWARE>: Yes / No
 IP and MAC still match: Yes / No
 ```
 
@@ -171,7 +171,7 @@ Developer Mode deliberately relaxes Authorization Control for local MQTT, live
 stream, and FTP. Official Bambu material says the user assumes responsibility
 for local-network security and Bambu support may not cover that mode.
 
-These effects are material. Neither mode may be changed without Cowboy's
+These effects are material. Neither mode may be changed without the operator's
 separate explicit authorization and a rollback plan.
 
 ## Exact next live-test procedure
@@ -185,7 +185,7 @@ Only after settings inspection and separate authorization:
 5. Reconfirm Bambu Studio/Handy expected availability for that mode.
 6. Run one 20-second encrypted MQTT 3.1.1 attempt.
 7. Send CONNECT, then subscribe only to
-   `device/01P00C511401400/report` if CONNACK succeeds.
+   `device/<PRINTER_SERIAL>/report` if CONNACK succeeds.
 8. Never publish or use `/request`; do not send push-all.
 9. Record only the sanitized category/code or normalized observation.
 10. Disconnect cleanly and verify zero production writes.

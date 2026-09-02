@@ -136,14 +136,23 @@ class P1SReadOnlyTelemetryTests(unittest.TestCase):
     def test_dashboard_placeholder_is_disabled_by_default_and_zero_write(self):
         with tempfile.TemporaryDirectory() as temp_name:
             database = Path(temp_name) / "inventory.sqlite3"
+            telemetry_path = Path(temp_name) / "maeve-telemetry.json"
             db = connect(database)
             migrate(db)
             db.close()
             before = hashlib.sha256(database.read_bytes()).hexdigest()
-            disabled = InventoryWebApp(database, p1s_telemetry_enabled=False)
+            disabled = InventoryWebApp(
+                database,
+                p1s_telemetry_enabled=False,
+                telemetry_path=telemetry_path,
+            )
             status, _, _ = disabled.response("/integrations/p1s")
             self.assertEqual(status, 404)
-            enabled = InventoryWebApp(database, p1s_telemetry_enabled=True)
+            enabled = InventoryWebApp(
+                database,
+                p1s_telemetry_enabled=True,
+                telemetry_path=telemetry_path,
+            )
             status, _, body = enabled.response("/integrations/p1s")
             page = body.decode("utf-8")
             self.assertEqual(status, 200)
