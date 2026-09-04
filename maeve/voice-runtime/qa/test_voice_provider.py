@@ -29,7 +29,16 @@ class ProviderTests(unittest.TestCase):
             self.calls.append((request, timeout))
             return FakeResponse(self.pcm)
         ledger = UsageLedger(Path(self.temp.name) / "usage.json", UsageLimits(monthly=2000, session=2000, warning=1600))
-        self.provider = ElevenLabsProvider(ledger=ledger, opener=opener, credential_reader=lambda: "x" * 32)
+        self.provider = ElevenLabsProvider(ledger=ledger, opener=opener, credential_reader=lambda: "x" * 32, voice_id="V" * 20)
+
+    def test_missing_or_invalid_local_voice_fails_before_credentials_and_network(self):
+        def forbidden():
+            self.fail("credential access without configured voice")
+        for value in (None, "", "REQUIRED_LOCAL_VOICE_ID_NOT_CONFIGURED", "../invalid", 123):
+            provider = ElevenLabsProvider(ledger=self.provider.ledger, opener=lambda *a, **k: self.fail("network access"), credential_reader=forbidden, voice_id=value)
+            self.assertFalse(provider.available())
+            with self.assertRaises(ProviderFailure):
+                provider.generate_response("Synthetic test", "a" * 32)
 
     def tearDown(self): self.temp.cleanup()
 

@@ -1,0 +1,11 @@
+/* Opacity-only readiness cue: does not move the approved halo or waveform. */
+body[data-voice-state] #halo-breath{animation:none}
+body[data-halo-idle="true"] #halo-breath{
+  animation:halo-idle-visible 3.6s ease-in-out infinite;
+  stroke-width:6;
+  filter:drop-shadow(0 0 3px rgba(240,90,0,.55));
+}
+@keyframes halo-idle-visible{0%,100%{opacity:.28}50%{opacity:.95}}
+@media(prefers-reduced-motion:reduce){
+  body[data-halo-idle="true"] #halo-breath{animation:none!important;opacity:.65}
+}

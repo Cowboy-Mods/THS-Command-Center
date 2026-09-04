@@ -23,6 +23,7 @@ DEFAULT_PORT = 48177
 MAX_REQUEST_TARGET = 2048
 MAX_JSON_BODY = 32768
 MAX_AUDIO_BYTES = 4 * 1024 * 1024
+RUNTIME_CLOSE_LOCK = threading.Lock()
 TOKEN_HEADER = "X-Maeve-Token"
 TOKEN_ENV = "MAEVE_RUNTIME_TOKEN"
 TOKEN_PATTERN = re.compile(r"^[a-fA-F0-9]{64}$")
@@ -94,6 +95,7 @@ def configure_runtime() -> dict[str, object]:
     WINDOWS_AUDIO = Path(str(config["diagnostic_wav"])) if config["diagnostic_wav"] else None
     os.environ.update(export_environment(config))
     RUNTIME_CONFIG = config
+    VOICE.cloud.voice_id = config["voice_id"]
     return config
 
 class TurnStageFailure(RuntimeError):
@@ -458,13 +460,19 @@ class SttService:
     @staticmethod
     def _command() -> list[str]:
         if not RUNTIME_CONFIG: raise TurnStageFailure("STT_START_FAILED")
+        worker = (RUNTIME_ROOT / "worker" / "stt_worker.py").resolve(strict=True)
+        if not worker.drive or len(worker.drive) != 2 or worker.drive[1] != ":":
+            raise TurnStageFailure("STT_START_FAILED")
+        worker_wsl = "/mnt/" + worker.drive[0].lower() + worker.as_posix()[2:]
+        if RUNTIME_CONFIG["stt_worker_path"] != worker_wsl:
+            raise TurnStageFailure("STT_START_FAILED")
         return ["wsl.exe", "-d", str(RUNTIME_CONFIG["stt_distribution"]), "-u", "root", "--", "env", "PIP_NO_INDEX=1",
                 "PIP_DISABLE_PIP_VERSION_CHECK=1", "HF_HUB_OFFLINE=1", "TRANSFORMERS_OFFLINE=1",
                 "HF_HUB_DISABLE_TELEMETRY=1", "PYTHONDONTWRITEBYTECODE=1", "CUDA_VISIBLE_DEVICES=0",
                 "LD_LIBRARY_PATH=/opt/maeve-stt/venv/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/maeve-stt/venv/lib/python3.12/site-packages/nvidia/cudnn/lib:/opt/maeve-stt/venv/lib/python3.12/site-packages/nvidia/cuda_nvrtc/lib",
                 f"MAEVE_STT_MODEL_PATH={RUNTIME_CONFIG['stt_model_path']}",
                 "unshare", "--net", "runuser", "-u", "maeve-stt", "--", str(RUNTIME_CONFIG["stt_python"]),
-                str(RUNTIME_CONFIG["stt_worker_path"])]
+                "-B", worker_wsl]
 
     def _read_json(self, timeout_seconds: float = 180) -> dict[str, object]:
         process = self.process
@@ -750,6 +758,16 @@ class MaeveHandler(BaseHTTPRequestHandler):
         if path is None: return self._finish(HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8", b"Bad request\n")
         if not self._authorized(): return self._finish(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8", b"Not found\n")
         if not valid_origin(self.headers.get("Origin")): return self._finish(HTTPStatus.FORBIDDEN, "application/json; charset=utf-8", b'{"error":"Origin rejected"}')
+        if path == "/api/runtime/close":
+            body = self._read_json_body()
+            if body is None or set(body) != {"action", "runtimeVersion"} or body.get("action") != "close-maeve" or body.get("runtimeVersion") != RUNTIME_VERSION:
+                return self._finish(HTTPStatus.BAD_REQUEST, "application/json; charset=utf-8", b'{"error":"Exact runtime close request required"}')
+            self._finish(HTTPStatus.OK, "application/json; charset=utf-8", b'{"status":"STOPPING","microphone":"CLOSED"}')
+            with RUNTIME_CLOSE_LOCK:
+                if not getattr(self.server, "maeve_close_requested", False):
+                    self.server.maeve_close_requested = True
+                    threading.Thread(target=self.server.shutdown, name="maeve-operator-shutdown", daemon=True).start()
+            return
         if path == "/api/stt/transcribe":
             try: length = int(self.headers.get("Content-Length", "0"))
             except ValueError: length = 0

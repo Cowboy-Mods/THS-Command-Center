@@ -109,7 +109,7 @@ def build_prompt(transcript: str, context: list[dict[str, str]]) -> str:
     context_text = "\n".join(safe_context)
     if len(context_text.encode("utf-8")) > MAX_CONTEXT_CHARS:
         raise ValueError("context character budget exceeded")
-    return f"{PERSONALITY}\n\nBOUNDED MEMORY-ONLY CONTEXT:\n{context_text or '(none)'}\n\nCOWBOY'S TRANSCRIPT:\n{transcript}\n\nReply as Maeve with response text only."
+    return f"{PERSONALITY}\n\nBOUNDED MEMORY-ONLY CONTEXT:\n{context_text or '(none)'}\n\nOPERATOR'S TRANSCRIPT:\n{transcript}\n\nReply as Maeve with response text only."
 
 
 @dataclass

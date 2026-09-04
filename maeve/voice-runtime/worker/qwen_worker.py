@@ -54,7 +54,7 @@ def load_identity():
     metadata_path, prompt_path = IDENTITY / "identity.json", IDENTITY / "voice-prompt.safetensors"
     if sha256_file(metadata_path) != IDENTITY_JSON_SHA or sha256_file(prompt_path) != PROMPT_SHA: raise RuntimeError("canonical identity file mismatch")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"), object_pairs_hook=strict_pairs)
-    if metadata.get("status") != "CANONICAL MAEVE LOCAL VOICE — COWBOY APPROVED" or metadata.get("realPersonClone") is not False: raise RuntimeError("canonical identity approval mismatch")
+    if metadata.get("status") != "CANONICAL MAEVE LOCAL VOICE — OPERATOR APPROVED" or metadata.get("realPersonClone") is not False: raise RuntimeError("canonical identity approval mismatch")
     expected = {item["name"]: item for item in metadata["voicePrompt"]["tensors"]}
     with safe_open(prompt_path, framework="pt", device="cpu") as handle:
         if sorted(handle.keys()) != sorted(expected): raise RuntimeError("canonical tensor inventory mismatch")

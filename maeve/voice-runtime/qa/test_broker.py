@@ -69,7 +69,7 @@ def main() -> None:
     assert launcher_source.index("health = wait_for_health(token, broker)") < launcher_source.index("if args.open_browser:")
     assert "capture=True" in launcher_source and "process.send_signal(signal.CTRL_BREAK_EVENT)" in launcher_source
     assert "broker_env[TOKEN_ENV] = token" in launcher_source
-    assert "[str(PYTHON_EXE), str(SERVER)" in launcher_source and "TOKEN_ENV" not in launcher_source.split("broker = children.start(", 1)[1].split("cwd=SERVER.parent", 1)[0]
+    assert '[str(PYTHON_EXE), "-B", str(SERVER)' in launcher_source and "TOKEN_ENV" not in launcher_source.split("broker = children.start(", 1)[1].split("cwd=SERVER.parent", 1)[0]
     assert "while time.monotonic() < deadline" in launcher_source and "children.start(" not in launcher_source.split("def wait_for_health", 1)[1].split("def parse_arguments", 1)[0]
     assert all(secret not in launcher_source for secret in (TOKEN, "MaeveV2/ElevenLabsPrimary"))
 
@@ -449,7 +449,7 @@ sys.stderr.write("PRIVATE_STDERR_DIAGNOSTIC\n"); sys.stderr.flush()
     assert all(value in server_source for value in ("transcriptId", "approvedText", "responseId", "originalSha256", "approvedSha256", "ALREADY_CANCELLED"))
     assert "GPU.owner != \"NONE\"" in server_source and "GPU.owner != \"QWEN\"" in server_source
     assert "base64.b64decode" in server_source and "response_audio = None" in server_source
-    assert all(value in qwen_source for value in ("0.5.0-stage13", "MAX_TEXT_CHARS = 360", "CANONICAL MAEVE LOCAL VOICE — COWBOY APPROVED", "audioBase64", 'storage": "memory-only"'))
+    assert all(value in qwen_source for value in ("0.5.0-stage13", "MAX_TEXT_CHARS = 360", "CANONICAL MAEVE LOCAL VOICE — OPERATOR APPROVED", "audioBase64", 'storage": "memory-only"'))
     assert "OUTPUT =" not in qwen_source and "sf.write(output" in qwen_source
     assert "subprocess" not in qwen_source and "wsl.exe" not in qwen_source
     assert all(value not in qwen_source for value in ("http://", "https://", "requests.", "urllib", "socket."))

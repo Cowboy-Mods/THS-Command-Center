@@ -1,0 +1,11 @@
+.runtime-close-card{display:flex;align-items:center;justify-content:space-between;gap:24px;margin:0 0 24px;border-left:3px solid #f05a00;padding:24px}
+.runtime-close-card h2{font-size:24px}.runtime-close-card p{font-size:17px;line-height:1.5}
+#control-close-maeve,#close-maeve-dialog button{min-height:56px;padding:16px 24px;font:700 17px/1.25 sans-serif;color:#fff;background:#291409;border:2px solid #f05a00;cursor:pointer}
+#control-close-maeve:focus-visible,#close-maeve-dialog button:focus-visible{outline:3px solid #fff;outline-offset:4px}
+#close-maeve-dialog{box-sizing:border-box;width:min(620px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;color:#eee;background:#090b0c;border:2px solid #f05a00;padding:28px}
+#close-maeve-dialog::backdrop{background:rgba(0,0,0,.8)}
+#close-maeve-dialog h2{font-size:28px;color:#ff862f;margin-top:0}
+#close-maeve-dialog p{font-size:18px;line-height:1.5;overflow-wrap:anywhere}
+.close-maeve-actions{display:flex;gap:16px;flex-wrap:wrap}.close-maeve-actions button{flex:1}
+#close-maeve-dialog button:disabled{cursor:default;opacity:.55}
+@media(max-width:700px){.runtime-close-card{flex-direction:column;align-items:stretch;padding:18px}.runtime-close-card h2{font-size:22px}#close-maeve-dialog{padding:20px}.close-maeve-actions{flex-direction:column}}

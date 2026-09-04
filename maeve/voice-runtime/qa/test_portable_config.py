@@ -14,6 +14,7 @@ from runtime_config import ConfigurationError, load_config  # noqa: E402
 
 def fixture() -> dict[str, object]:
     return {
+        "voice": {"voice_id": "V" * 20},
         "windows": {"python_executable": "C:/portable/python.exe", "codex_executable": "C:/portable/codex.exe"},
         "runtime": {"root": str(ROOT)},
         "wsl": {
@@ -45,6 +46,9 @@ def main() -> None:
         assert loaded["host"] == "127.0.0.1" and loaded["broker_port"] == 48177
         assert loaded["qwen"]["distribution"] is None
     bad = fixture(); bad["network"]["broker_host"] = "0.0.0.0"; rejected(bad)
+    for value in (None, "", "REQUIRED_LOCAL_VOICE_ID_NOT_CONFIGURED", "../invalid", 123, " V" * 10):
+        bad = fixture(); bad["voice"]["voice_id"] = value; rejected(bad)
+    bad = fixture(); del bad["voice"]; rejected(bad)
     bad = fixture(); bad["network"]["reserved_test_port"] = 48177; rejected(bad)
     bad = fixture(); bad["windows"]["api_key"] = "prohibited"; rejected(bad)
     bad = fixture(); bad["wsl"]["qwen_distribution"] = "Maeve-Qwen-TTS"; rejected(bad)
