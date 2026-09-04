@@ -1,4 +1,7 @@
 {
+  "voice": {
+    "voice_id": "REQUIRED_LOCAL_VOICE_ID_NOT_CONFIGURED"
+  },
   "windows": {
     "python_executable": "C:/PATH/TO/python.exe",
     "codex_executable": "C:/PATH/TO/codex.exe"

@@ -20,8 +20,7 @@ import wave
 
 ELEVENLABS_API = "https://api.elevenlabs.io/v1"
 ELEVENLABS_MODEL = "eleven_flash_v2_5"
-ELEVENLABS_VOICE_ID = "uQQ5hr5j8TOzHNkY0VtG"
-ELEVENLABS_VOICE_NAME = "Maeve - Dublin Command"
+ELEVENLABS_VOICE_NAME = "Operator-configured voice"
 ELEVENLABS_OUTPUT_FORMAT = "pcm_24000"
 ELEVENLABS_SPEED = 0.90
 SAMPLE_RATE = 24_000
@@ -210,10 +209,17 @@ def validate_wav(value: bytes) -> dict[str, object]:
             "durationSeconds": frames / SAMPLE_RATE, "format": "RIFF/WAVE PCM-16"}
 
 
+def valid_local_voice_id(value) -> bool:
+    # Resource syntax only; existence is never probed during configuration.
+    import re
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9]{20}", value) is not None
+
+
 class ElevenLabsProvider:
     name = "ELEVENLABS"
 
-    def __init__(self, ledger: UsageLedger | None = None, opener=None, credential_reader=credential_read) -> None:
+    def __init__(self, ledger: UsageLedger | None = None, opener=None, credential_reader=credential_read, *, voice_id=None) -> None:
+        self.voice_id = voice_id if valid_local_voice_id(voice_id) else None
         self.ledger = ledger or default_ledger()
         self.opener = opener or urllib.request.urlopen
         self.credential_reader = credential_reader
@@ -226,6 +232,8 @@ class ElevenLabsProvider:
         self.connection = None
 
     def available(self) -> bool:
+        if not valid_local_voice_id(self.voice_id):
+            return False
         secret = self.credential_reader()
         present = bool(secret)
         secret = None
@@ -239,6 +247,8 @@ class ElevenLabsProvider:
                 "usage": self.ledger.status()}
 
     def generate_response(self, text: str, response_id: str, *, timeout: float = 120) -> dict[str, object]:
+        if not valid_local_voice_id(self.voice_id):
+            raise ProviderFailure("VOICE_CONFIGURATION_FAILED")
         if not isinstance(response_id, str) or len(response_id) != 32:
             raise ProviderFailure("VOICE_IDENTITY_FAILED")
         if not 0.7 <= ELEVENLABS_SPEED <= 1.2:
@@ -257,7 +267,7 @@ class ElevenLabsProvider:
                            "voice_settings": {"speed": ELEVENLABS_SPEED}}, ensure_ascii=False).encode("utf-8")
         query = urllib.parse.urlencode({"output_format": ELEVENLABS_OUTPUT_FORMAT})
         request = urllib.request.Request(
-            f"{ELEVENLABS_API}/text-to-speech/{urllib.parse.quote(ELEVENLABS_VOICE_ID)}/stream?{query}",
+            f"{ELEVENLABS_API}/text-to-speech/{urllib.parse.quote(self.voice_id)}/stream?{query}",
             data=body, method="POST",
             headers={"xi-api-key": key, "Accept": "application/octet-stream", "Content-Type": "application/json; charset=utf-8"},
         )
@@ -340,7 +350,7 @@ class MockElevenLabsProvider(ElevenLabsProvider):
     """Non-network smoke provider with a fixed synthetic WAV."""
 
     def __init__(self, ledger: UsageLedger) -> None:
-        super().__init__(ledger=ledger, credential_reader=lambda: "mock-nonsecret-credential-value")
+        super().__init__(ledger=ledger, credential_reader=lambda: "mock-nonsecret-credential-value", voice_id="V" * 20)
 
     def generate_response(self, text: str, response_id: str, *, timeout: float = 120) -> dict[str, object]:
         if response_id in self.consumed or self.active_response_id is not None:

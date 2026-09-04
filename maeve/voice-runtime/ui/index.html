@@ -2,105 +2,73 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#050708">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Maeve">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; font-src 'none'; media-src 'self' blob:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; worker-src 'none'">
   <meta http-equiv="Permissions-Policy" content="microphone=(self), camera=(), geolocation=(), payment=()">
-  <title>Maeve V2 — Canonical Local Voice</title>
+  <title>Maeve — THS Command Center</title>
+  <link rel="icon" href="./assets/maeve_foreground_transparent_v2.png">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/crew/maeve_crew_portrait_photoreal_v2.png">
   <link rel="stylesheet" href="./styles/approved-home-source.css">
   <link rel="stylesheet" href="./styles/runtime-stage1.css">
+  <link rel="stylesheet" href="./styles/integrated-ui.css">
+  <link rel="stylesheet" href="./styles/visual-correction.css?v=20260902n">
+  <link rel="stylesheet" href="./styles/desktop-readability.css?v=20260903a">
+  <link rel="stylesheet" href="./styles/specialist-focus.css?v=20260903a">
+  <link rel="stylesheet" href="./styles/focused-halo-layer.css?v=20260903a">
+  <link rel="stylesheet" href="./styles/idle-halo.css?v=20260903a">
+  <link rel="stylesheet" href="./styles/close-control.css">
+  <script src="./scripts/close-control.js" defer></script>
+  <script src="./scripts/idle-halo.js?v=20260903a" defer></script>
+  <script src="./scripts/specialist-focus.js?v=20260903a" defer></script>
+  <script src="./scripts/voice-display.js?v=20260903a" defer></script>
 </head>
 <body>
-<div class="app-shell">
+<div class="app-shell integrated-shell">
   <header class="topbar">
-    <div class="brand"><span class="brand-mark">M2</span><span><strong>MAEVE V2</strong><small>THS COMMAND CENTER</small></span></div>
-    <nav class="primary-nav" aria-label="Runtime views">
-      <button class="nav-tab is-active" type="button" aria-current="page">Home</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Crew</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Comms</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Schedule</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Library</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Docs</button>
-      <button class="nav-tab is-disabled" type="button" disabled title="Not ported in this slice">Control</button>
+    <div class="brand"><span class="brand-mark">M2</span><span><strong>MAEVE</strong><small>THS COMMAND CENTER</small></span></div>
+    <nav class="primary-nav" aria-label="Command center views">
+      <button class="nav-tab is-active" type="button" data-view="home" aria-current="page">Home</button><button class="nav-tab" type="button" data-view="crew">Crew</button><button class="nav-tab" type="button" data-view="comms">Comms</button><button class="nav-tab" type="button" data-view="schedule">Schedule</button><button class="nav-tab" type="button" data-view="library">Library</button><button class="nav-tab" type="button" data-view="docs">Docs</button><button class="nav-tab" type="button" data-view="control">Control</button>
     </nav>
-    <div class="fixture-badge" id="voice-provider-indicator">▲ &nbsp; VOICE PROVIDER VERIFYING</div>
+    <div class="fixture-badge" id="voice-provider-indicator">VOICE PROVIDER · CHECK PENDING</div>
   </header>
-
   <div class="environment" aria-hidden="true"><div class="skyline skyline-a"></div><div class="skyline skyline-b"></div><div class="reflection reflection-a"></div><div class="reflection reflection-b"></div></div>
-
-  <main class="view-stage">
-    <section class="view home-view is-active" data-view-panel="home">
-      <aside class="side-panel left-panel">
-        <section class="panel-block"><p class="eyebrow">Current focus</p><h1>Maeve Command</h1><p class="muted">Static visual systems validation</p><div class="fixture-row"><span>Design fixture</span><time>09:00 EST</time></div></section>
-        <section class="panel-block"><p class="eyebrow">Crew status</p><div id="home-roster"></div><p class="port-note">INFORMATIONAL ONLY · CREW ROUTING NOT PORTED</p></section>
+  <main class="view-stage" id="view-stage">
+    <section class="view home-view is-active" data-view-panel="home" aria-labelledby="home-title" tabindex="0">
+      <div class="view-controls" aria-label="Home view controls"><button id="clean-view" type="button">CLEAN VIEW</button><button id="restore-command-view" type="button" hidden>RESTORE COMMAND VIEW</button></div>
+      <div class="mobile-section-tabs" aria-label="Mobile command sections"><button id="mobile-status" class="is-active" type="button" aria-pressed="true">STATUS</button><button id="mobile-voice" type="button" aria-pressed="false">VOICE</button></div>
+      <button class="edge-tab edge-tab-status" id="restore-status" type="button" hidden>STATUS</button><button class="edge-tab edge-tab-voice" id="restore-voice" type="button" hidden>VOICE</button>
+      <aside class="mission-column">
+        <section class="command-card focus-card"><p class="eyebrow">Current focus</p><h1 id="home-title">Maeve Command</h1><p class="truth-state">NO ASSIGNED TASK</p><p class="card-note">A verified task source is not connected.</p></section>
+        <section class="command-card printer-card"><div class="card-heading"><span><p class="eyebrow">Primary operations</p><h2>Printer status</h2></span><span class="status-chip offline">NOT CONNECTED</span></div><div class="printer-identity"><strong>Bambu Lab P1S</strong><span>MONITORING COMING IN LATER STAGE</span></div><dl class="fact-grid"><div><dt>Connection</dt><dd>NO VERIFIED DATA</dd></div><div><dt>Current job</dt><dd>NO VERIFIED DATA</dd></div><div><dt>Progress</dt><dd>NOT AVAILABLE</dd></div><div><dt>Material</dt><dd>SOURCE NOT CONFIGURED</dd></div></dl><p class="safety-note">READ-ONLY STATUS AREA · NO PRINTER CONTROL</p></section>
+        <section class="command-card crew-summary"><div class="card-heading"><span><p class="eyebrow">Crew</p><h2>Command roster</h2></span><button class="text-link" type="button" data-open-view="crew">VIEW ALL 9</button></div><div class="summary-line"><strong>MAEVE</strong><span>COMMANDER</span></div><div class="summary-line"><strong>SHOP OPS</strong><span>PRINT-SHOP MECHANIC</span></div><p class="card-note">9 ACTIVE CREW · NO ASSIGNED TASKS</p></section>
+        <section class="command-card next-event"><p class="eyebrow">Next event</p><h2>NO VERIFIED DATA</h2><p class="card-note">Schedule source is not configured.</p></section>
       </aside>
-
-      <section class="command-stage" aria-label="Maeve command stage runtime foundation">
-        <div class="halo-wrap" aria-label="Orange command halo">
-          <svg id="maeve-halo" viewBox="0 0 1000 1000" role="img" aria-labelledby="halo-title halo-desc">
-            <title id="halo-title">Maeve command halo</title>
-            <desc id="halo-desc">Transparent layered orange rings with idle breathing and real local playback analysis.</desc>
-            <defs><filter id="halo-orange-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="8" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs>
-            <g class="halo-rings" fill="none" stroke="#f05a00" transform="rotate(-90 500 500)">
-              <circle id="halo-breath" cx="500" cy="500" r="320" stroke-width="3" opacity=".32"></circle>
-              <circle id="halo-voice-low" cx="500" cy="500" r="350" stroke-width="4" stroke-dasharray="3 12 28 8" opacity=".65" filter="url(#halo-orange-glow)"></circle>
-              <circle id="halo-voice-mid" cx="500" cy="500" r="382" stroke-width="5" stroke-dasharray="2 15 44 10" opacity=".82"></circle>
-              <circle id="halo-voice-high" cx="500" cy="500" r="416" stroke-width="2" stroke-dasharray="1 9 18 13" opacity=".45"></circle>
-            </g>
-          </svg>
-        </div>
-        <img class="maeve-foreground" src="./assets/maeve_foreground_transparent_v2.png" alt="Maeve, THS command center crew chief">
-        <div class="state-console" role="status" aria-live="polite"><div><span class="state-dot" id="runtime-dot"></span><strong id="runtime-state">LOADING</strong><span id="runtime-detail">— CANONICAL LOCAL VOICE</span></div><small id="halo-state">HALO: IDLE BREATHING · NO AUDIO INPUT</small></div>
+      <section class="command-stage" id="maeve-command-stage" role="button" tabindex="0" aria-label="Open focused Maeve Conversation Mode" aria-expanded="false">
+        <div class="voice-display" aria-label="Voice waveform below shoulders; inactive without audio"><svg viewBox="0 0 400 140" role="img" aria-labelledby="voice-display-title"><title id="voice-display-title">Bounded horizontal voice waves</title><defs><clipPath id="voice-display-clip"><rect x="12" y="12" width="376" height="116" rx="30"/></clipPath></defs><ellipse cx="200" cy="70" rx="154" ry="56" fill="#080b0c" fill-opacity=".78" stroke="#ef5b0c" stroke-opacity=".55" stroke-width="1.5"/><g clip-path="url(#voice-display-clip)" fill="none" stroke="#ff7a2b" stroke-linecap="round"><path id="voice-line-low" d="M 28 70 L 372 70" stroke-width="2.5"/><path id="voice-line-mid" d="M 28 70 L 372 70" stroke-width="1.7" opacity=".65"/><path id="voice-line-high" d="M 28 70 L 372 70" stroke-width="1" opacity=".4"/></g></svg></div>
+        <div class="halo-wrap" aria-label="Orange voice-responsive command halo"><svg id="maeve-halo" viewBox="0 0 1000 1000" role="img" aria-labelledby="halo-title halo-desc"><title id="halo-title">Maeve command halo</title><desc id="halo-desc">The halo breathes slowly while ready. The bottom waveform represents Maeve playback only, never microphone input. Processing uses a separate status indicator.</desc><defs><filter id="halo-orange-glow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="8" result="blur"></feGaussianBlur><feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge></filter></defs><circle id="halo-breath" cx="500" cy="500" r="390" fill="none" stroke="#f05a00" stroke-width="3" opacity=".34"></circle><g id="halo-waveform" class="halo-waveform" fill="none" stroke="#f05a00" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path id="halo-wave-low" stroke-width="7" opacity=".78" filter="url(#halo-orange-glow)"></path><path id="halo-wave-mid" stroke-width="4" opacity=".58"></path><path id="halo-wave-high" stroke-width="2" opacity=".38"></path></g><circle id="halo-processing" class="halo-processing" cx="500" cy="500" r="430" fill="none" stroke="#f05a00" stroke-width="7" stroke-dasharray="18 24 64 22" opacity=".18"></circle></svg></div>
+        <img class="maeve-foreground" src="./assets/maeve_foreground_transparent_v2.png" alt="Maeve, THS commander"><img class="maeve-focus-portrait" src="./assets/crew/maeve_crew_portrait_photoreal_v2.png" alt="Maeve, THS commander in focused Conversation Mode"><div class="commander-title"><span>COMMANDER</span><strong>MAEVE</strong></div><div class="state-console" role="status" aria-live="polite"><div><span class="state-dot" id="runtime-dot"></span><strong id="runtime-state">OFF</strong><span id="runtime-detail">— DELIBERATE START REQUIRED</span></div><small id="halo-state">NO AUDIO — MODE ENDED</small><small id="open-room-state">OPEN ROOM · NOT AVAILABLE</small></div><div class="focus-conversation-controls"><button id="focus-return" type="button">RETURN TO COMMAND CENTER</button></div>
       </section>
-
-      <aside class="side-panel right-panel">
-        <section class="panel-block"><p class="eyebrow">Today</p><ul class="timeline"><li><time>09:00</time><span>THS-Delta calibration and validation</span></li><li><time>11:30</time><span>Ranger deployment plan with Ops</span></li><li><time>14:00</time><span>Review Shop Ops build queue</span></li><li><time>16:00</time><span>Quartermaster supply review</span></li></ul></section>
-        <section class="panel-block"><p class="eyebrow">Approval previews</p><div class="approval-line"><span>Ranger Chassis R2B<br>Build authorization</span><b>HIGH</b></div><div class="approval-line"><span>THS-Delta firmware<br>Release candidate</span><b>MEDIUM</b></div><div class="approval-line"><span>Composite sheet<br>Vendor order</span><b>LOW</b></div></section>
-        <section class="panel-block voice-panel" aria-labelledby="voice-heading">
-          <p class="eyebrow" id="voice-heading">Maeve voice provider</p>
-          <p class="voice-review-instruction">Press PLAY VERIFIED MAEVE TEST to review voice-reactive halo behavior.</p>
-          <label class="voice-label" for="voice-text">LIVE GENERATION OFFLINE</label>
-          <textarea id="voice-text" rows="4" maxlength="180" spellcheck="false" disabled aria-disabled="true"></textarea>
-          <div class="voice-actions"><button id="voice-speak" type="button" disabled>PLAY VERIFIED MAEVE TEST</button><button id="voice-stop" type="button" disabled>STOP AUDIO</button></div>
-          <strong class="voice-state" id="voice-state">LOADING</strong><small id="voice-boundary">ELEVENLABS PRIMARY · QWEN REQUIRES DELIBERATE MANUAL SELECTION</small>
-          <div class="ptt-panel" aria-labelledby="ptt-heading">
-            <p class="eyebrow" id="ptt-heading">Local push-to-talk — transcript only</p>
-            <p class="ptt-boundary">Review Mode sends transcript text only after approval. Raw audio stays local. No tools, agents, wake word, clipboard, or proactive monitoring.</p>
-            <strong class="voice-state" id="ptt-state">UNAVAILABLE</strong>
-            <dl class="ptt-status"><dt>Endpoint</dt><dd id="ptt-endpoint">Not verified</dd><dt>Microphone</dt><dd id="ptt-microphone">CLOSED — no MediaStream requested</dd></dl>
-            <button id="ptt-arm" type="button" disabled hidden>ARM ONE LOCAL PTT</button>
-            <button id="ptt-hold" type="button" disabled>HOLD TO TALK</button>
-            <span class="voice-label">ORIGINAL LOCAL TRANSCRIPT — NOT SENT</span>
-            <output id="ptt-original-transcript" aria-live="polite">No transcription.</output>
-            <label class="voice-label" for="ptt-transcript">APPROVED TEXT — EDIT BEFORE SEND</label>
-            <textarea id="ptt-transcript" rows="4" maxlength="800" spellcheck="true" disabled aria-describedby="ptt-review-boundary"></textarea>
-            <small id="ptt-review-boundary">Nothing reaches OpenAI until operator activates SEND EDITED TEXT &amp; RESPOND. The original transcript remains visible for comparison.</small>
-            <div class="ptt-approval-actions" id="ptt-approval-actions" hidden>
-              <button id="ptt-approve" type="button" disabled>SEND EDITED TEXT &amp; RESPOND</button>
-              <button id="ptt-discard" type="button" disabled>DISCARD</button>
-            </div>
-            <button id="ptt-cancel-response" type="button" disabled hidden>CANCEL MAEVE RESPONSE</button>
-            <section class="review-response" aria-labelledby="ptt-response-heading">
-              <p class="voice-label" id="ptt-response-heading">MAEVE RESPONSE — EXACT BROKER TEXT</p>
-              <output id="ptt-response" role="status" aria-live="polite" aria-atomic="true">No Review response yet.</output>
-            </section>
-            <section class="conversation-session" id="conversation-session" data-state="OFF" aria-labelledby="conversation-heading">
-              <p class="eyebrow" id="conversation-heading">Controlled conversation — OpenAI reasoning</p>
-              <p class="ptt-boundary">Starts only through a trusted physical click. Local microphone and STT; text-only OpenAI reasoning; explicit Maeve voice provider.</p>
-              <div class="conversation-actions"><button id="conversation-start" type="button" disabled>START CONVERSATION</button><button id="conversation-mute" type="button" disabled>MUTE</button><button id="conversation-cancel" type="button" disabled>CANCEL CONVERSATION</button><button id="conversation-end" type="button" disabled>END CONVERSATION</button></div>
-              <div id="conversation-log" class="conversation-log" aria-live="polite"></div>
-            </section>
-          </div>
-        </section>
+      <aside class="voice-command-column">
+        <section class="command-card startup-card" id="startup-card"><div class="card-heading"><span><p class="eyebrow">Verified startup</p><h2>System readiness</h2></span><span class="status-chip" id="startup-summary">OFF</span></div><ol class="startup-stages" id="startup-stages"><li data-stage="broker"><span>01</span>STARTING BROKER<strong>WAITING</strong></li><li data-stage="stt"><span>02</span>WARMING SPEECH RECOGNITION<strong>WAITING</strong></li><li data-stage="voice"><span>03</span>CHECKING VOICE PROVIDER<strong>WAITING</strong></li><li data-stage="voice-ready"><span>04</span>VOICE READY<strong>WAITING</strong></li><li data-stage="maeve-ready"><span>05</span>MAEVE READY<strong>WAITING</strong></li></ol><div class="startup-failure" id="startup-failure" hidden><strong id="startup-failure-message">Maeve could not finish startup.</strong><button id="show-startup-details" type="button">SHOW DETAILS</button><pre id="startup-details" hidden></pre><div class="failure-actions"><button id="retry-failed-stage" type="button">TRY AGAIN</button><button id="close-maeve" type="button">CLOSE MAEVE</button><button id="start-text-only" type="button" hidden>START TEXT-ONLY</button></div></div></section>
+        <section class="command-card voice-panel" aria-labelledby="conversation-heading"><div class="voice-heading"><span><p class="eyebrow">Voice safety</p><h2 id="conversation-heading">Controlled conversation</h2></span><strong class="voice-state" id="voice-state">OFF</strong></div><p class="ptt-boundary">Local microphone and faster-whisper. Text-only reasoning. Explicit Maeve voice provider. No wake word.</p><section class="conversation-session" id="conversation-session" data-state="OFF"><div class="conversation-actions primary-voice-actions"><button id="conversation-start" class="start-control" type="button" disabled>START CONVERSATION</button><button id="conversation-mute" class="mute-control" type="button" disabled>MUTE</button><button id="conversation-end" class="end-control" type="button" disabled>END CONVERSATION</button><button id="conversation-cancel" type="button" disabled>CANCEL CONVERSATION</button></div><div id="conversation-log" class="conversation-log" aria-live="polite"></div></section><dl class="voice-facts"><div><dt>Microphone</dt><dd id="ptt-microphone">CLOSED — no MediaStream requested</dd></div><div><dt>Provider</dt><dd>OPERATOR-CONFIGURED VOICE · FLASH V2.5 · SPEED 0.90</dd></div><div><dt>Relistening</dt><dd>SILENT 650 MS SAFETY TRANSITION</dd></div></dl></section>
       </aside>
     </section>
+    <section class="view structured-view" data-view-panel="crew" hidden><header class="view-header"><p class="eyebrow">Active crew</p><h1>Command crew</h1><p>Nine active crew positions. No invented names or assignments.</p></header><aside class="owner-note"><span class="portrait-pending" role="img" aria-label="Operator portrait not configured">OWNER</span><span><strong>OPERATOR</strong><small>OWNER / FINAL AUTHORITY</small><em>OWNER/OPERATOR · OUTSIDE THE NINE-PERSON CREW COUNT</em></span></aside><div class="crew-grid" id="home-roster"></div><section class="crew-detail" id="crew-detail" hidden aria-labelledby="crew-detail-name"><div class="crew-detail-heading"><span><p class="eyebrow">Crew detail</p><h2 id="crew-detail-name"></h2></span><button id="crew-detail-close" type="button">RETURN TO FULL ROSTER</button></div><div class="crew-detail-body"><div id="crew-detail-portrait"></div><dl><div><dt>Role</dt><dd id="crew-detail-role"></dd></div><div><dt>Availability</dt><dd>IDLE / AVAILABLE</dd></div><div><dt>Responsibilities</dt><dd id="crew-detail-responsibilities"></dd></div><div><dt>Current assigned task</dt><dd>NO ASSIGNED TASK</dd></div><div><dt>Connected capabilities</dt><dd>NONE CONNECTED IN THIS MILESTONE</dd></div><div><dt>Unavailable / future capabilities</dt><dd>ROUTING NOT YET CONNECTED</dd></div></dl></div><button type="button" disabled>ROUTING NOT YET CONNECTED</button></section><aside class="executor-note"><strong>EXECUTOR</strong><span>DISABLED · SEPARATE · EXCLUDED FROM ACTIVE ROSTER</span></aside></section>
+    <section class="view structured-view" data-view-panel="comms" hidden><header class="view-header"><p class="eyebrow">Communications</p><h1>Comms</h1></header><div class="empty-state"><strong>NOT CONNECTED</strong><p>No messaging source is configured. Maeve cannot send messages or contact anyone from this milestone.</p></div></section>
+    <section class="view structured-view" data-view-panel="schedule" hidden><header class="view-header"><p class="eyebrow">Time and commitments</p><h1>Schedule</h1></header><div class="empty-state"><strong>NO VERIFIED DATA</strong><p>No calendar source is connected. No events, appointments, or reminders are displayed.</p></div></section>
+    <section class="view structured-view" data-view-panel="library" hidden><header class="view-header"><p class="eyebrow">THS knowledge</p><h1>Library</h1></header><div class="empty-state"><strong>SOURCE NOT CONFIGURED</strong><p>Project and print-library indexing will be connected in a later stage. No files can be transferred here.</p></div></section>
+    <section class="view structured-view" data-view-panel="docs" hidden><header class="view-header"><p class="eyebrow">Records and procedures</p><h1>Docs</h1></header><div class="empty-state"><strong>SOURCE NOT CONFIGURED</strong><p>No document source is connected. This view performs no writes or external actions.</p></div></section>
+    <section class="view structured-view control-view" data-view-panel="control" hidden><header class="view-header"><p class="eyebrow">Safety and runtime boundaries</p><h1>Control</h1><p>Operator-controlled features only. Future behavior stays visibly disabled.</p></header><div class="control-grid"><section class="command-card"><p class="eyebrow">Open Room</p><h2>NOT YET AVAILABLE</h2><p>Wake-word capture and room monitoring are unimplemented and uncertified.</p><label class="disabled-switch"><input type="checkbox" disabled> OPEN ROOM ARMED</label></section><section class="command-card"><p class="eyebrow">Wake word</p><h2>NOT YET AVAILABLE</h2><p>No microphone monitoring starts automatically. Mute and End will override any future saved state.</p><label class="disabled-switch"><input type="checkbox" disabled> WAKE-WORD CAPTURE</label></section><section class="command-card"><p class="eyebrow">Voice mode</p><h2>ELEVENLABS PRIMARY</h2><p>Qwen remains an explicit manual/offline choice. No silent fallback.</p></section><section class="command-card"><p class="eyebrow">Operational authority</p><h2>CONTROL DISABLED</h2><p>No printer control, database mutation, messages, payments, posts, transfers, or appointments.</p></section></div><details class="legacy-review"><summary>REVIEW MODE CONTROLS</summary><div class="ptt-panel"><strong class="voice-state" id="ptt-state">UNAVAILABLE</strong><dl class="ptt-status"><dt>Endpoint</dt><dd id="ptt-endpoint">Not verified</dd></dl><button id="ptt-arm" type="button" disabled hidden>ARM ONE LOCAL PTT</button><button id="ptt-hold" type="button" disabled>HOLD TO TALK</button><span class="voice-label">ORIGINAL LOCAL TRANSCRIPT — NOT SENT</span><output id="ptt-original-transcript">No transcription.</output><label class="voice-label" for="ptt-transcript">APPROVED TEXT — EDIT BEFORE SEND</label><textarea id="ptt-transcript" rows="4" maxlength="800" disabled></textarea><small id="ptt-review-boundary">Nothing reaches OpenAI until operator approves the transcript.</small><div class="ptt-approval-actions" id="ptt-approval-actions" hidden><button id="ptt-approve" type="button" disabled>SEND EDITED TEXT &amp; RESPOND</button><button id="ptt-discard" type="button" disabled>DISCARD</button></div><button id="ptt-cancel-response" type="button" disabled hidden>CANCEL MAEVE RESPONSE</button><section class="review-response"><p class="voice-label">MAEVE RESPONSE — EXACT BROKER TEXT</p><output id="ptt-response">No Review response yet.</output></section></div></details></section>
   </main>
-  <footer class="footerbar"><span>MAEVE V2 · CONTROLLED CONVERSATION</span><span>HOME</span><span>127.0.0.1 ONLY · RAW AUDIO LOCAL</span></footer>
+  <section class="screen-reader-runtime" aria-hidden="true" aria-atomic="true"><textarea id="voice-text" disabled></textarea><button id="voice-speak" type="button" disabled>PLAY VERIFIED MAEVE TEST</button><button id="voice-stop" type="button" disabled>STOP AUDIO</button></section>
+  <footer class="footerbar"><span>MAEVE · THS COMMAND CENTER</span><span id="active-view-label">HOME</span><span>LOCAL-FIRST · OPERATOR CONTROLLED · NO AUTOMATIC RETRY</span></footer>
 </div>
-<script src="./scripts/provider-contract.js" defer></script>
-<script src="./scripts/halo-analyzer.js" defer></script>
-<script src="./scripts/ptt-controller.js" defer></script>
-<script src="./scripts/conversation-controller.js" defer></script>
-<script src="./scripts/runtime.js" defer></script>
+<script src="./scripts/provider-contract.js" defer></script><script src="./scripts/halo-analyzer.js?v=20260902e" defer></script><script src="./scripts/ptt-controller.js" defer></script><script src="./scripts/conversation-controller.js" defer></script><script src="./scripts/integrated-ui.js?v=20260902g" defer></script><script src="./scripts/runtime.js?v=20260902b" defer></script>
 </body>
 </html>

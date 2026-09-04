@@ -1,0 +1,15 @@
+config.local.json
+config.*.local.json
+.env
+.env.*
+.local/
+__pycache__/
+*.pyc
+node_modules/
+evidence/
+logs/
+*-usage*.json
+*.wav
+*.webm
+*.sqlite*
+*.db

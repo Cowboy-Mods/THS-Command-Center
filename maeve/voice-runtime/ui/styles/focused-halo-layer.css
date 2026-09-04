@@ -1,0 +1,10 @@
+/* Shared focused-screen compositing. Never changes the approved portrait.
+   Only the peripheral arcs are composited above its opaque backdrop; the
+   central half is transparent so no halo line crosses a face or eyes.
+   Audio analysis, waveform placement and state animation remain unchanged. */
+:is(.conversation-focus .halo-wrap, #specialist-focus .specialist-static-halo){
+  z-index:4;
+  pointer-events:none;
+  -webkit-mask-image:linear-gradient(to right,#000 0 24%,transparent 25% 75%,#000 76% 100%);
+  mask-image:linear-gradient(to right,#000 0 24%,transparent 25% 75%,#000 76% 100%);
+}

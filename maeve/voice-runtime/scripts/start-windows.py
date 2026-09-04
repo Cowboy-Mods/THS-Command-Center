@@ -12,14 +12,14 @@ import socket
 import subprocess
 import sys
 import time
+import tempfile
 import urllib.error
 import urllib.request
 
 
 RUNTIME_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RUNTIME_ROOT))
-from runtime_config import CONFIG_ENV, export_environment, load_config  # noqa: E402
-
+from runtime_config import export_environment, load_config
 PYTHON_EXE = Path("python.exe")
 WSL_EXE = Path(r"C:\Windows\System32\wsl.exe")
 EDGE_EXE = Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
@@ -87,6 +87,8 @@ class OwnedChildren:
             self._children.pop(process.pid, None)
 
     def stop_exact(self, process: subprocess.Popen[bytes], *, graceful_break: bool) -> str:
+        if self._children.get(process.pid) is not process:
+            raise RuntimeError("Cleanup rejected an unowned process handle")
         if process.poll() is not None:
             self._children.pop(process.pid, None)
             return "already-exited"
@@ -117,7 +119,9 @@ class OwnedChildren:
 
 
 def controlled_environment() -> dict[str, str]:
-    return {name: os.environ[name] for name in ENV_ALLOWLIST if name in os.environ}
+    result = {name: os.environ[name] for name in ENV_ALLOWLIST if name in os.environ}
+    result["PYTHONDONTWRITEBYTECODE"] = "1"
+    return result
 
 
 def load_startup_configuration() -> dict[str, object]:
@@ -128,6 +132,32 @@ def load_startup_configuration() -> dict[str, object]:
     PORT = int(config["broker_port"])
     RESERVED_PORT = int(config["reserved_port"])
     return config
+
+
+def create_browser_profile() -> Path:
+    # Retained until independent post-test ownership/inventory verification.
+    return Path(tempfile.mkdtemp(prefix="maeve-close-owned-edge-")).resolve(strict=True)
+
+
+def browser_arguments(profile: Path, local_url: str, *, test_mode: str | None = None) -> list[str]:
+    if test_mode not in (None, "no-voice"):
+        raise RuntimeError("Invalid explicit test mode")
+    if not profile.is_absolute() or not profile.name.startswith("maeve-close-owned-edge-"):
+        raise RuntimeError("Dedicated browser profile identity rejected")
+    if not local_url.startswith(f"http://{HOST}:{PORT}/"):
+        raise RuntimeError("Nonlocal browser destination rejected")
+    arguments = [str(EDGE_EXE), f"--user-data-dir={profile}", f"--app={local_url}",
+                 "--no-first-run", "--no-default-browser-check", "--disable-background-mode"]
+    if test_mode == "no-voice":
+        arguments += ["--disable-background-networking",
+            "--disable-sync", "--disable-extensions", "--disable-component-update",
+            "--disable-domain-reliability", "--disable-breakpad", "--disable-crash-reporter",
+            "--disable-default-apps", "--disable-client-side-phishing-detection",
+            "--disable-features=PreconnectToSearch,Prerender2,SpeculationRulesPrefetch,msEdgeSidebarV2,msStartupBoost",
+            "--no-pings", "--metrics-recording-only", "--deny-permission-prompts", "--mute-audio",
+                      "--autoplay-policy=user-gesture-required",
+                      "--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=127.0.0.1"]
+    return arguments
 
 
 def ensure_closed(port: int) -> None:
@@ -143,6 +173,20 @@ def verify_files() -> None:
         raise RuntimeError("Required runtime files are missing: " + ", ".join(missing))
     if not PYTHON_EXE.is_file() or not WSL_EXE.is_file():
         raise RuntimeError("The exact verified Python or WSL executable is missing")
+
+
+def verify_python_runtime() -> None:
+    """Reject PATH aliases and unrelated project virtual environments."""
+    try:
+        actual = Path(sys.executable).resolve(strict=True)
+        approved = PYTHON_EXE.resolve(strict=True)
+    except OSError as error:
+        raise RuntimeError("The verified Maeve Python runtime could not be resolved") from error
+    if actual != approved or sys.version_info[:2] < (3, 11):
+        raise RuntimeError(
+            "Unapproved Python runtime. Double-click START MAEVE.cmd; do not use "
+            "python, py, or another project virtual environment"
+        )
 
 
 def verify_wsl_stopped(children: OwnedChildren, env: dict[str, str]) -> None:
@@ -217,7 +261,14 @@ def wait_for_health(token: str, broker: subprocess.Popen[bytes]) -> dict[str, ob
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Start Maeve V2 Stage 13 without a shell wrapper")
+    parser = argparse.ArgumentParser(description="Start Maeve V2 Stage 13 without a shell wrapper", allow_abbrev=False)
+    class ExplicitTestMode(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            if getattr(namespace, self.dest, None) is not None:
+                parser.error("Repeated test-mode selection rejected")
+            setattr(namespace, self.dest, values)
+    parser.add_argument("--test-mode", choices=("no-voice",), default=None, action=ExplicitTestMode,
+                        help="explicit no-voice validation only; never enabled by the normal CMD entry point")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--smoke-test", action="store_true", help="health-check and stop without a browser")
     mode.add_argument("--open-browser", action="store_true", help="open the approved local Edge UI")
@@ -228,12 +279,15 @@ def parse_arguments() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_arguments()
+    print("MAEVE_LAUNCH_MODE=" + ("TEST_NO_VOICE" if args.test_mode else "NORMAL_OPERATOR"), flush=True)
     children = OwnedChildren()
     token: str | None = None
     broker: subprocess.Popen[bytes] | None = None
+    browser: subprocess.Popen[bytes] | None = None
     shutdown_method = "not-started"
     try:
         config = load_startup_configuration()
+        verify_python_runtime()
         verify_files()
         ensure_closed(PORT)
         ensure_closed(RESERVED_PORT)
@@ -244,7 +298,7 @@ def main() -> int:
         broker_env.update(export_environment(config))
         broker_env[TOKEN_ENV] = token
         broker = children.start(
-            [str(PYTHON_EXE), str(SERVER), "--port", str(PORT), "--controlled-conversation", "--voice-provider", args.voice_provider],
+            [str(PYTHON_EXE), "-B", str(SERVER), "--port", str(PORT), "--controlled-conversation", "--voice-provider", args.voice_provider],
             cwd=SERVER.parent, env=broker_env, capture=True,
             process_group=True,
         )
@@ -263,8 +317,10 @@ def main() -> int:
             if not EDGE_EXE.is_file():
                 raise RuntimeError("The exact Microsoft Edge executable is missing")
             local_url = f"http://{HOST}:{PORT}/?ptt=physical-test#token={token}"
+            browser_profile = create_browser_profile()
+            print("MAEVE_OWNED_BROWSER_PROFILE=DEDICATED", flush=True)
             browser = children.start(
-                [str(EDGE_EXE), "--new-window", local_url],
+                browser_arguments(browser_profile, local_url, test_mode=args.test_mode),
                 cwd=EDGE_EXE.parent,
                 env=base_env,
             )
@@ -283,6 +339,12 @@ def main() -> int:
         token = None
         if broker is not None:
             shutdown_method = children.stop_exact(broker, graceful_break=True)
+        if browser is not None:
+            # Give the confirmed in-app close time to exit its dedicated instance.
+            try:
+                browser.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                print("MAEVE_BROWSER_GRACEFUL_EXIT_FAILED owned fallback required", flush=True)
         other_results = children.stop_all_exact()
         ensure_closed(PORT)
         ensure_closed(RESERVED_PORT)

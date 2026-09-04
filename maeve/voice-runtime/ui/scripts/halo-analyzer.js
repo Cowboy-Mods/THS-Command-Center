@@ -7,24 +7,19 @@
     return global.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }
 
-  function applyValues(values = {}) {
+  function applyValues(values = {}, source = "none") {
     const low = clamp(values.low);
     const mid = clamp(values.mid);
     const high = clamp(values.high);
     const root = document.documentElement;
     const frozen = reducedMotionActive();
+    global.MAEVE_VOICE_DISPLAY?.apply({low, mid, high}, source);
     const scale = frozen ? 1 : 1 + low * .025 + mid * .018;
     const opacity = frozen ? .82 : .72 + Math.max(low, mid, high) * .24;
     root.style.setProperty("--halo-scale", String(scale));
     root.style.setProperty("--halo-opacity", String(opacity));
-    [["halo-voice-low", low, 1.5], ["halo-voice-mid", mid, 2.1], ["halo-voice-high", high, 2.8]].forEach(([id, value, warp]) => {
-      const ring = document.getElementById(id);
-      if (!ring) return;
-      ring.style.transformBox = "fill-box";
-      ring.style.transformOrigin = "center";
-      ring.style.transform = frozen ? "none" : `scale(${1 + value * .018},${1 + value * warp * .006})`;
-      ring.style.opacity = String(frozen ? .55 : Math.min(1, .4 + value * .6));
-    });
+    const radialWavePath=(radius,amplitude,phase)=>{const points=120,segments=[];for(let index=0;index<=points;index+=1){const angle=Math.PI*2*index/points,modulated=radius+Math.sin(angle*8+phase)*amplitude+Math.sin(angle*13-phase)*amplitude*.32,x=500+Math.cos(angle)*modulated,y=500+Math.sin(angle)*modulated;segments.push(`${index?"L":"M"}${x.toFixed(2)} ${y.toFixed(2)}`);}return `${segments.join(" ")} Z`;};
+    [["halo-wave-low",390,low,0],["halo-wave-mid",405,mid,1.7],["halo-wave-high",375,high,3.1]].forEach(([id,radius,value,phase])=>{const wave=document.getElementById(id);if(!wave)return;const amplitude=frozen?0:2+value*34;wave.setAttribute("d",radialWavePath(radius,amplitude,phase));wave.style.opacity=String(frozen?.44:.44+value*.5);});
     return Object.freeze({low, mid, high, scale, opacity, reducedMotion: frozen});
   }
 
@@ -52,7 +47,7 @@
     function tick() {
       if (!active) return;
       analyser.getByteFrequencyData(bins);
-      const values = applyValues({low: bandAverage(.002, .08), mid: bandAverage(.08, .32), high: bandAverage(.32, .78)});
+      const values = applyValues({low: bandAverage(.002, .08), mid: bandAverage(.08, .32), high: bandAverage(.32, .78)}, "playback");
       if (typeof options.onSample === "function") options.onSample(values);
       frame = global.requestAnimationFrame(tick);
     }
@@ -65,4 +60,5 @@
   }
 
   global.MAEVE_HALO_ANALYZER = Object.freeze({create, applyValues, reducedMotionActive});
+  applyValues({});
 })(globalThis);

@@ -16,6 +16,11 @@ SECRET_FIELD = re.compile(r"(?:api.?key|password|secret|token|cookie|authorizati
 WSL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
+def valid_voice_id(value: Any) -> bool:
+    """Validate local resource syntax without disclosing or contacting it."""
+    return isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9]{20}", value) is not None
+
+
 class ConfigurationError(RuntimeError):
     """A content-free startup error safe to show to an operator."""
 
@@ -73,7 +78,7 @@ def load_config(path: Path | None = None, *, require_local_files: bool = True) -
     root = _object(raw, "root")
     if any(SECRET_FIELD.search(str(key)) for section in root.values() if isinstance(section, dict) for key in section):
         raise ConfigurationError("Secret-shaped configuration fields are prohibited")
-    if set(root) != {"windows", "runtime", "wsl", "microphone", "diagnostics", "network"}:
+    if set(root) != {"windows", "runtime", "wsl", "microphone", "diagnostics", "network", "voice"}:
         raise ConfigurationError("Configuration contains missing or unknown top-level sections")
 
     windows = _object(root["windows"], "windows")
@@ -82,6 +87,9 @@ def load_config(path: Path | None = None, *, require_local_files: bool = True) -
     microphone = _object(root["microphone"], "microphone")
     diagnostics = _object(root["diagnostics"], "diagnostics")
     network = _object(root["network"], "network")
+    voice = _object(root["voice"], "voice")
+    if set(voice) != {"voice_id"} or not valid_voice_id(voice.get("voice_id")):
+        raise ConfigurationError("Required local voice configuration is missing or invalid")
     runtime_root = Path(_text(runtime, "root") or "")
     if not runtime_root.is_absolute() or runtime_root.resolve() != Path(__file__).resolve().parent:
         raise ConfigurationError("Configured runtime root does not identify this release copy")
@@ -117,6 +125,7 @@ def load_config(path: Path | None = None, *, require_local_files: bool = True) -
 
     return {
         "config_path": str(config_path),
+        "voice_id": voice["voice_id"],
         "python_executable": _windows_path(windows, "python_executable", required_file=require_local_files),
         "codex_executable": _windows_path(windows, "codex_executable", required_file=require_local_files),
         "runtime_root": str(runtime_root.resolve()),
